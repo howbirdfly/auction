@@ -27,3 +27,14 @@ CREATE TABLE IF NOT EXISTS auction_bid_record (
     bid_time TIMESTAMP NOT NULL,
     KEY idx_auction_bid_room_time (room_id, bid_time)
 );
+
+CREATE TABLE IF NOT EXISTS user_account (
+    user_id VARCHAR(32) PRIMARY KEY,
+    account VARCHAR(32) NOT NULL UNIQUE,
+    password VARCHAR(64) NOT NULL,
+    nickname VARCHAR(32) NOT NULL,
+    avatar_url VARCHAR(512) NULL,
+    bio VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);

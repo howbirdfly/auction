@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.user.mapper.UserAccountMapper">
+
+    <resultMap id="UserAccountResultMap" type="com.auction.backend.user.model.UserAccount">
+        <id property="userId" column="user_id"/>
+        <result property="account" column="account"/>
+        <result property="password" column="password"/>
+        <result property="nickname" column="nickname"/>
+        <result property="avatarUrl" column="avatar_url"/>
+        <result property="bio" column="bio"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="UserColumns">
+        user_id,
+        account,
+        password,
+        nickname,
+        avatar_url,
+        bio,
+        created_at,
+        updated_at
+    </sql>
+
+    <select id="countUsers" resultType="long">
+        select count(*)
+        from user_account
+    </select>
+
+    <select id="findAllOrderByCreatedAtDesc" resultMap="UserAccountResultMap">
+        select <include refid="UserColumns"/>
+        from user_account
+        order by created_at desc
+    </select>
+
+    <select id="findById" resultMap="UserAccountResultMap">
+        select <include refid="UserColumns"/>
+        from user_account
+        where user_id = #{userId}
+    </select>
+
+    <select id="findByAccount" resultMap="UserAccountResultMap">
+        select <include refid="UserColumns"/>
+        from user_account
+        where account = #{account}
+    </select>
+
+    <select id="findAllUserIds" resultType="string">
+        select user_id
+        from user_account
+    </select>
+
+    <insert id="insert" parameterType="com.auction.backend.user.model.UserAccount">
+        insert into user_account (
+            user_id,
+            account,
+            password,
+            nickname,
+            avatar_url,
+            bio,
+            created_at,
+            updated_at
+        ) values (
+            #{userId},
+            #{account},
+            #{password},
+            #{nickname},
+            #{avatarUrl},
+            #{bio},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateProfile" parameterType="com.auction.backend.user.model.UserAccount">
+        update user_account
+        set nickname = #{nickname},
+            avatar_url = #{avatarUrl},
+            bio = #{bio},
+            updated_at = #{updatedAt}
+        where user_id = #{userId}
+    </update>
+
+    <update id="updatePassword" parameterType="com.auction.backend.user.model.UserAccount">
+        update user_account
+        set password = #{password},
+            updated_at = #{updatedAt}
+        where user_id = #{userId}
+    </update>
+</mapper>
