@@ -33,7 +33,7 @@ public class AuctionService {
 
     public AuctionService(AuctionBroadcastService broadcastService) {
         this.broadcastService = broadcastService;
-        seedDemoRoom();
+        seedDemoRooms();
     }
 
     public List<AuctionRoomSnapshot> listRooms() {
@@ -167,15 +167,26 @@ public class AuctionService {
         return room.getCurrentPrice().add(room.getStepPrice());
     }
 
-    private void seedDemoRoom() {
+    private void seedDemoRooms() {
+        addSeedRoom("主播限量球鞋盲盒", "直播主理人 Ava", 199, 20, 600);
+        addSeedRoom("潮玩手办专场", "主播 Miko", 299, 30, 720);
+        addSeedRoom("设计师包包福利局", "主播 Coco", 599, 50, 840);
+        addSeedRoom("数码耳机夜场拍", "主播 Neo", 399, 25, 960);
+    }
+
+    private void addSeedRoom(String itemTitle,
+                             String anchorName,
+                             int startPrice,
+                             int stepPrice,
+                             int durationSeconds) {
         String roomId = "AR-" + roomSequence.incrementAndGet();
         AuctionRoom room = new AuctionRoom(
                 roomId,
-                "主播限量球鞋盲盒",
-                "直播主理人Ava",
-                BigDecimal.valueOf(199),
-                BigDecimal.valueOf(20),
-                Instant.now().plusSeconds(600),
+                itemTitle,
+                anchorName,
+                BigDecimal.valueOf(startPrice),
+                BigDecimal.valueOf(stepPrice),
+                Instant.now().plusSeconds(durationSeconds),
                 AuctionStatus.BIDDING
         );
         rooms.put(roomId, room);
