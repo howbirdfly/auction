@@ -2,22 +2,23 @@ package com.auction.backend.auction.model;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.LinkedList;
 
 public class AuctionRoom {
 
-    private final String roomId;
-    private final String itemTitle;
-    private final String anchorName;
-    private final String imageUrl;
-    private final BigDecimal startPrice;
-    private final BigDecimal stepPrice;
-    private final LinkedList<BidRecord> bidRecords = new LinkedList<>();
+    private String roomId;
+    private String itemTitle;
+    private String anchorName;
+    private String imageUrl;
+    private BigDecimal startPrice;
+    private BigDecimal stepPrice;
     private BigDecimal currentPrice;
     private String leaderUserId;
     private String leaderNickname;
     private Instant endsAt;
     private AuctionStatus status;
+
+    public AuctionRoom() {
+    }
 
     public AuctionRoom(String roomId,
                        String itemTitle,
@@ -42,28 +43,48 @@ public class AuctionRoom {
         return roomId;
     }
 
+    public void setRoomId(String roomId) {
+        this.roomId = roomId;
+    }
+
     public String getItemTitle() {
         return itemTitle;
+    }
+
+    public void setItemTitle(String itemTitle) {
+        this.itemTitle = itemTitle;
     }
 
     public String getAnchorName() {
         return anchorName;
     }
 
+    public void setAnchorName(String anchorName) {
+        this.anchorName = anchorName;
+    }
+
     public String getImageUrl() {
         return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 
     public BigDecimal getStartPrice() {
         return startPrice;
     }
 
+    public void setStartPrice(BigDecimal startPrice) {
+        this.startPrice = startPrice;
+    }
+
     public BigDecimal getStepPrice() {
         return stepPrice;
     }
 
-    public LinkedList<BidRecord> getBidRecords() {
-        return bidRecords;
+    public void setStepPrice(BigDecimal stepPrice) {
+        this.stepPrice = stepPrice;
     }
 
     public BigDecimal getCurrentPrice() {

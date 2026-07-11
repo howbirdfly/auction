@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.auction.mapper.AuctionBidRecordMapper">
+
+    <resultMap id="AuctionBidRecordResultMap" type="AuctionBidRecordEntity">
+        <id property="id" column="id"/>
+        <result property="roomId" column="room_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="nickname" column="nickname"/>
+        <result property="amount" column="amount"/>
+        <result property="bidTime" column="bid_time"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="AuctionBidRecordEntity" useGeneratedKeys="true" keyProperty="id">
+        insert into auction_bid_record (
+            room_id,
+            user_id,
+            nickname,
+            amount,
+            bid_time
+        ) values (
+            #{roomId},
+            #{userId},
+            #{nickname},
+            #{amount},
+            #{bidTime}
+        )
+    </insert>
+
+    <select id="findLatestByRoomId" resultMap="AuctionBidRecordResultMap">
+        select id, room_id, user_id, nickname, amount, bid_time
+        from auction_bid_record
+        where room_id = #{roomId}
+        order by bid_time desc, id desc
+        limit #{limit}
+    </select>
+
+    <select id="countByRoomId" resultType="long">
+        select count(*)
+        from auction_bid_record
+        where room_id = #{roomId}
+    </select>
+</mapper>

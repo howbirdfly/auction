@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.auction.mapper.AuctionRoomMapper">
+
+    <resultMap id="AuctionRoomResultMap" type="AuctionRoom">
+        <id property="roomId" column="room_id"/>
+        <result property="itemTitle" column="item_title"/>
+        <result property="anchorName" column="anchor_name"/>
+        <result property="imageUrl" column="image_url"/>
+        <result property="startPrice" column="start_price"/>
+        <result property="stepPrice" column="step_price"/>
+        <result property="currentPrice" column="current_price"/>
+        <result property="leaderUserId" column="leader_user_id"/>
+        <result property="leaderNickname" column="leader_nickname"/>
+        <result property="endsAt" column="ends_at"/>
+        <result property="status" column="status"/>
+    </resultMap>
+
+    <sql id="AuctionRoomColumns">
+        room_id,
+        item_title,
+        anchor_name,
+        image_url,
+        start_price,
+        step_price,
+        current_price,
+        leader_user_id,
+        leader_nickname,
+        ends_at,
+        status
+    </sql>
+
+    <select id="countRooms" resultType="long">
+        select count(*)
+        from auction_room
+    </select>
+
+    <select id="findAllOrderByEndsAtAsc" resultMap="AuctionRoomResultMap">
+        select <include refid="AuctionRoomColumns"/>
+        from auction_room
+        order by ends_at asc
+    </select>
+
+    <select id="findById" resultMap="AuctionRoomResultMap">
+        select <include refid="AuctionRoomColumns"/>
+        from auction_room
+        where room_id = #{roomId}
+    </select>
+
+    <select id="findByIdForUpdate" resultMap="AuctionRoomResultMap">
+        select <include refid="AuctionRoomColumns"/>
+        from auction_room
+        where room_id = #{roomId}
+        for update
+    </select>
+
+    <select id="findExpiredRooms" resultMap="AuctionRoomResultMap">
+        select <include refid="AuctionRoomColumns"/>
+        from auction_room
+        where status = #{status}
+          and ends_at &lt;= #{now}
+        order by ends_at asc
+    </select>
+
+    <select id="findAllRoomIds" resultType="string">
+        select room_id
+        from auction_room
+    </select>
+
+    <insert id="insert" parameterType="AuctionRoom">
+        insert into auction_room (
+            room_id,
+            item_title,
+            anchor_name,
+            image_url,
+            start_price,
+            step_price,
+            current_price,
+            leader_user_id,
+            leader_nickname,
+            ends_at,
+            status
+        ) values (
+            #{roomId},
+            #{itemTitle},
+            #{anchorName},
+            #{imageUrl},
+            #{startPrice},
+            #{stepPrice},
+            #{currentPrice},
+            #{leaderUserId},
+            #{leaderNickname},
+            #{endsAt},
+            #{status}
+        )
+    </insert>
+
+    <update id="updateAfterBid" parameterType="AuctionRoom">
+        update auction_room
+        set current_price = #{currentPrice},
+            leader_user_id = #{leaderUserId},
+            leader_nickname = #{leaderNickname},
+            ends_at = #{endsAt},
+            status = #{status}
+        where room_id = #{roomId}
+    </update>
+
+    <update id="updateStatus">
+        update auction_room
+        set status = #{status}
+        where room_id = #{roomId}
+    </update>
+</mapper>
