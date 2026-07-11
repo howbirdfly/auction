@@ -37,3 +37,18 @@ export function createBid(roomId, form) {
     body: JSON.stringify(form),
   });
 }
+
+export function fetchUsers() {
+  return request("/users");
+}
+
+export function fetchUser(userId) {
+  return request(`/users/${userId}`);
+}
+
+export function updateUser(userId, form) {
+  return request(`/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(form),
+  });
+}
