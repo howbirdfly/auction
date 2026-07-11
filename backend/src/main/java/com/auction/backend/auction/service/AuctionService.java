@@ -26,6 +26,7 @@ public class AuctionService {
     private static final long LAST_SECOND_EXTENSION_WINDOW = 10;
     private static final long LAST_SECOND_EXTENSION_SECONDS = 15;
     private static final int MAX_RECENT_BIDS = 10;
+    private static final String DEFAULT_COVER_URL = "https://placehold.co/800x600/f6f7fb/1f2937?text=Auction+Room";
 
     private final Map<String, AuctionRoom> rooms = new ConcurrentHashMap<>();
     private final AtomicLong roomSequence = new AtomicLong(1000);
@@ -53,12 +54,14 @@ public class AuctionService {
                 roomId,
                 request.itemTitle(),
                 request.anchorName(),
+                resolveImageUrl(request.imageUrl()),
                 request.startPrice(),
                 request.stepPrice(),
                 Instant.now().plusSeconds(request.durationSeconds()),
                 AuctionStatus.BIDDING
         );
         rooms.put(roomId, room);
+
         AuctionRoomSnapshot snapshot = toSnapshot(room);
         broadcastService.broadcastLobby(listRooms());
         broadcastService.broadcastRoom(snapshot);
@@ -147,6 +150,7 @@ public class AuctionService {
                 room.getRoomId(),
                 room.getItemTitle(),
                 room.getAnchorName(),
+                room.getImageUrl(),
                 room.getStatus(),
                 room.getStartPrice(),
                 room.getCurrentPrice(),
@@ -167,15 +171,51 @@ public class AuctionService {
         return room.getCurrentPrice().add(room.getStepPrice());
     }
 
+    private String resolveImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return DEFAULT_COVER_URL;
+        }
+        return imageUrl.trim();
+    }
+
     private void seedDemoRooms() {
-        addSeedRoom("主播限量球鞋盲盒", "直播主理人 Ava", 199, 20, 600);
-        addSeedRoom("潮玩手办专场", "主播 Miko", 299, 30, 720);
-        addSeedRoom("设计师包包福利局", "主播 Coco", 599, 50, 840);
-        addSeedRoom("数码耳机夜场拍", "主播 Neo", 399, 25, 960);
+        addSeedRoom(
+                "主播限量球鞋盲盒",
+                "直播主理人 Ava",
+                "https://placehold.co/800x600/f7efe2/20242c?text=Sneaker+Blind+Box",
+                199,
+                20,
+                600
+        );
+        addSeedRoom(
+                "潮玩手办专场",
+                "主播 Miko",
+                "https://placehold.co/800x600/eaf3ff/1e293b?text=Collectible+Toys",
+                299,
+                30,
+                720
+        );
+        addSeedRoom(
+                "设计师包包福利局",
+                "主播 Coco",
+                "https://placehold.co/800x600/fff5e8/312e2b?text=Designer+Bag",
+                599,
+                50,
+                840
+        );
+        addSeedRoom(
+                "数码耳机夜场拍",
+                "主播 Neo",
+                "https://placehold.co/800x600/edf7f6/1f2937?text=Digital+Headphone",
+                399,
+                25,
+                960
+        );
     }
 
     private void addSeedRoom(String itemTitle,
                              String anchorName,
+                             String imageUrl,
                              int startPrice,
                              int stepPrice,
                              int durationSeconds) {
@@ -184,6 +224,7 @@ public class AuctionService {
                 roomId,
                 itemTitle,
                 anchorName,
+                imageUrl,
                 BigDecimal.valueOf(startPrice),
                 BigDecimal.valueOf(stepPrice),
                 Instant.now().plusSeconds(durationSeconds),

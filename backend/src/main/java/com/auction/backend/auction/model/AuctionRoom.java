@@ -9,6 +9,7 @@ public class AuctionRoom {
     private final String roomId;
     private final String itemTitle;
     private final String anchorName;
+    private final String imageUrl;
     private final BigDecimal startPrice;
     private final BigDecimal stepPrice;
     private final LinkedList<BidRecord> bidRecords = new LinkedList<>();
@@ -21,6 +22,7 @@ public class AuctionRoom {
     public AuctionRoom(String roomId,
                        String itemTitle,
                        String anchorName,
+                       String imageUrl,
                        BigDecimal startPrice,
                        BigDecimal stepPrice,
                        Instant endsAt,
@@ -28,6 +30,7 @@ public class AuctionRoom {
         this.roomId = roomId;
         this.itemTitle = itemTitle;
         this.anchorName = anchorName;
+        this.imageUrl = imageUrl;
         this.startPrice = startPrice;
         this.stepPrice = stepPrice;
         this.currentPrice = startPrice;
@@ -45,6 +48,10 @@ public class AuctionRoom {
 
     public String getAnchorName() {
         return anchorName;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 
     public BigDecimal getStartPrice() {

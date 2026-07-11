@@ -11,6 +11,7 @@ public record CreateAuctionRequest(
         String itemTitle,
         @NotBlank(message = "cannot be blank")
         String anchorName,
+        String imageUrl,
         @DecimalMin(value = "0.01", message = "must be greater than 0")
         BigDecimal startPrice,
         @DecimalMin(value = "0.01", message = "must be greater than 0")
