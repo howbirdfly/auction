@@ -49,9 +49,7 @@ button {
 .feed-room-card,
 .room-cover-card,
 .feedback-banner,
-.empty-card,
-.summary-chip,
-.refresh-chip {
+.empty-card {
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(32, 36, 44, 0.06);
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
@@ -68,8 +66,6 @@ button {
 .promo-banner,
 .summary-card,
 .metric-card,
-.summary-chip,
-.refresh-chip,
 .feed-room-card,
 .room-cover-card,
 .feedback-banner,
@@ -80,7 +76,6 @@ button {
 .search-row,
 .channel-tabs,
 .category-row,
-.home-summary,
 .feed-room-head,
 .feed-room-price,
 .feed-room-footer,
@@ -245,20 +240,17 @@ button {
   gap: 12px;
 }
 
-.metric-card,
-.summary-chip {
+.metric-card {
   padding: 14px;
 }
 
 .metric-card span,
-.summary-chip span,
 .summary-card span {
   display: block;
   color: #8b94a3;
 }
 
 .metric-card strong,
-.summary-chip strong,
 .summary-card strong {
   display: block;
   margin-top: 8px;
@@ -291,17 +283,6 @@ button {
   background: #ffe24d;
   color: #20242c;
   font-weight: 800;
-}
-
-.home-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.refresh-chip {
-  padding: 14px;
-  color: #20242c;
-  font-weight: 700;
 }
 
 .feed-grid {

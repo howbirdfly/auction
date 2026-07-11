@@ -178,25 +178,10 @@ function renderRoomCard(room) {
 }
 
 function renderLobbyView() {
-  const liveRooms = getLiveRooms();
-  const closedRooms = getClosedRooms();
-
   screenEl.innerHTML = `
     ${renderHomeHeader()}
     ${renderCategoryRow()}
     ${renderPromoBanner()}
-
-    <section class="home-summary">
-      <div class="summary-chip">
-        <span>竞拍中</span>
-        <strong>${liveRooms.length}</strong>
-      </div>
-      <div class="summary-chip">
-        <span>已结束</span>
-        <strong>${closedRooms.length}</strong>
-      </div>
-      <button id="refreshRooms" class="refresh-chip">刷新房间</button>
-    </section>
 
     <section class="feed-grid">
       ${
@@ -207,7 +192,6 @@ function renderLobbyView() {
     </section>
   `;
 
-  screenEl.querySelector("#refreshRooms")?.addEventListener("click", loadRooms);
   screenEl.querySelectorAll("[data-room-id]").forEach((button) => {
     button.addEventListener("click", () => {
       openRoom(button.dataset.roomId);
