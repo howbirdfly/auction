@@ -16,7 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 		"spring.datasource.username=sa",
 		"spring.datasource.password=",
 		"spring.datasource.driver-class-name=org.h2.Driver",
-		"spring.sql.init.mode=always"
+		"spring.sql.init.mode=always",
+		"auction.cache.redis.enabled=false"
 })
 class BackendApplicationTests {
 

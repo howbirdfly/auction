@@ -1,8 +1,12 @@
 package com.auction.backend.auction.service;
 
+import com.auction.backend.auction.cache.AuctionCacheService;
+import com.auction.backend.auction.config.AuctionCacheProperties;
+import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
 import com.auction.backend.auction.dto.CreateAuctionRequest;
+import com.auction.backend.auction.model.AuctionLeaderboardRow;
 import com.auction.backend.auction.mapper.AuctionBidRecordMapper;
 import com.auction.backend.auction.mapper.AuctionRoomMapper;
 import com.auction.backend.auction.model.AuctionBidRecordEntity;
@@ -28,19 +32,26 @@ public class AuctionService {
     private static final long LAST_SECOND_EXTENSION_WINDOW = 10;
     private static final long LAST_SECOND_EXTENSION_SECONDS = 15;
     private static final int RECENT_BID_LIMIT = 10;
+    private static final int LEADERBOARD_LIMIT = 10;
     private static final String DEFAULT_COVER_URL = "https://placehold.co/800x600/f6f7fb/1f2937?text=Auction+Room";
 
     private final AtomicLong roomSequence = new AtomicLong(1000);
     private final AuctionRoomMapper auctionRoomMapper;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionBroadcastService broadcastService;
+    private final AuctionCacheService auctionCacheService;
+    private final AuctionCacheProperties auctionCacheProperties;
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
-                          AuctionBroadcastService broadcastService) {
+                          AuctionBroadcastService broadcastService,
+                          AuctionCacheService auctionCacheService,
+                          AuctionCacheProperties auctionCacheProperties) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.broadcastService = broadcastService;
+        this.auctionCacheService = auctionCacheService;
+        this.auctionCacheProperties = auctionCacheProperties;
     }
 
     @PostConstruct
@@ -53,14 +64,30 @@ public class AuctionService {
 
     @Transactional(readOnly = true)
     public List<AuctionRoomSnapshot> listRooms() {
-        return auctionRoomMapper.findAllOrderByEndsAtAsc().stream()
-                .map(room -> toSnapshot(room, false))
-                .toList();
+        return auctionCacheService.getLobby()
+                .orElseGet(this::loadLobbySnapshots);
     }
 
     @Transactional(readOnly = true)
     public AuctionRoomSnapshot getRoom(String roomId) {
-        return toSnapshot(findRoom(roomId), true);
+        return auctionCacheService.getRoom(roomId)
+                .orElseGet(() -> {
+                    AuctionRoomSnapshot snapshot = toSnapshot(findRoom(roomId), true);
+                    auctionCacheService.cacheRoom(snapshot);
+                    return snapshot;
+                });
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuctionLeaderboardEntry> getLeaderboard(String roomId) {
+        findRoom(roomId);
+
+        return auctionCacheService.getLeaderboard(roomId)
+                .orElseGet(() -> {
+                    List<AuctionLeaderboardEntry> leaderboard = loadLeaderboard(roomId);
+                    auctionCacheService.cacheLeaderboard(roomId, leaderboard, getRoom(roomId));
+                    return leaderboard;
+                });
     }
 
     @Transactional
@@ -79,7 +106,9 @@ public class AuctionService {
         auctionRoomMapper.insert(room);
 
         AuctionRoomSnapshot snapshot = toSnapshot(room, true);
-        broadcastService.broadcastLobby(listRooms());
+        auctionCacheService.cacheRoom(snapshot);
+        List<AuctionRoomSnapshot> lobby = refreshLobbyCache();
+        broadcastService.broadcastLobby(lobby);
         broadcastService.broadcastRoom(snapshot);
         return snapshot;
     }
@@ -93,7 +122,9 @@ public class AuctionService {
 
         auctionBidRecordMapper.deleteByRoomId(roomId);
         auctionRoomMapper.deleteById(roomId);
-        broadcastService.broadcastLobby(listRooms());
+        auctionCacheService.evictRoom(roomId);
+        auctionCacheService.evictLeaderboard(roomId);
+        broadcastService.broadcastLobby(refreshLobbyCache());
     }
 
     @Transactional
@@ -140,8 +171,10 @@ public class AuctionService {
 
         auctionRoomMapper.updateAfterBid(room);
         AuctionRoomSnapshot snapshot = toSnapshot(room, true);
+        auctionCacheService.cacheRoom(snapshot);
+        auctionCacheService.recordBid(roomId, request.userId(), request.nickname(), request.amount(), snapshot);
         broadcastService.broadcastRoom(snapshot);
-        broadcastService.broadcastLobby(listRooms());
+        broadcastService.broadcastLobby(refreshLobbyCache());
         return snapshot;
     }
 
@@ -158,8 +191,28 @@ public class AuctionService {
         }
 
         expiredRooms.forEach(this::closeRoom);
-        broadcastService.broadcastLobby(listRooms());
-        expiredRooms.forEach(room -> broadcastService.broadcastRoom(toSnapshot(room, true)));
+        List<AuctionRoomSnapshot> lobby = refreshLobbyCache();
+        broadcastService.broadcastLobby(lobby);
+        expiredRooms.forEach(room -> {
+            AuctionRoomSnapshot snapshot = toSnapshot(room, true);
+            auctionCacheService.cacheRoom(snapshot);
+            auctionCacheService.cacheLeaderboard(room.getRoomId(), loadLeaderboard(room.getRoomId()), snapshot);
+            broadcastService.broadcastRoom(snapshot);
+        });
+    }
+
+    @Scheduled(fixedDelay = 15000)
+    @Transactional(readOnly = true)
+    public void warmHotRoomCache() {
+        List<AuctionRoom> hotRooms = auctionRoomMapper.findAllOrderByEndsAtAsc().stream()
+                .filter(this::isHotRoom)
+                .toList();
+
+        hotRooms.forEach(room -> {
+            AuctionRoomSnapshot snapshot = toSnapshot(room, true);
+            auctionCacheService.cacheRoom(snapshot);
+            auctionCacheService.cacheLeaderboard(room.getRoomId(), loadLeaderboard(room.getRoomId()), snapshot);
+        });
     }
 
     private void closeRoom(AuctionRoom room) {
@@ -239,6 +292,43 @@ public class AuctionService {
                 })
                 .max()
                 .orElse(1000L);
+    }
+
+    private List<AuctionRoomSnapshot> loadLobbySnapshots() {
+        List<AuctionRoomSnapshot> snapshots = auctionRoomMapper.findAllOrderByEndsAtAsc().stream()
+                .map(room -> toSnapshot(room, false))
+                .toList();
+        auctionCacheService.cacheLobby(snapshots);
+        return snapshots;
+    }
+
+    private List<AuctionRoomSnapshot> refreshLobbyCache() {
+        auctionCacheService.evictLobby();
+        return loadLobbySnapshots();
+    }
+
+    private List<AuctionLeaderboardEntry> loadLeaderboard(String roomId) {
+        List<AuctionLeaderboardRow> rows = auctionBidRecordMapper.findLeaderboardByRoomId(roomId, LEADERBOARD_LIMIT);
+        return java.util.stream.IntStream.range(0, rows.size())
+                .mapToObj(index -> {
+                    AuctionLeaderboardRow row = rows.get(index);
+                    return new AuctionLeaderboardEntry(
+                            index + 1,
+                            row.getUserId(),
+                            row.getNickname(),
+                            row.getAmount()
+                    );
+                })
+                .toList();
+    }
+
+    private boolean isHotRoom(AuctionRoom room) {
+        if (room.getStatus() != AuctionStatus.BIDDING) {
+            return false;
+        }
+
+        long secondsRemaining = Duration.between(Instant.now(), room.getEndsAt()).toSeconds();
+        return secondsRemaining > 0 && secondsRemaining <= auctionCacheProperties.getHotRoomWindow().toSeconds();
     }
 
     private void seedDemoRooms() {

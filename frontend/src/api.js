@@ -24,6 +24,10 @@ export function fetchRoom(roomId) {
   return request(`/auctions/${roomId}`);
 }
 
+export function fetchLeaderboard(roomId) {
+  return request(`/auctions/${roomId}/leaderboard`);
+}
+
 export function createRoom(form) {
   return request("/auctions", {
     method: "POST",

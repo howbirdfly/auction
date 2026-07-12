@@ -37,6 +37,18 @@
         limit #{limit}
     </select>
 
+    <select id="findLeaderboardByRoomId" resultType="com.auction.backend.auction.model.AuctionLeaderboardRow">
+        select user_id as userId,
+               max(nickname) as nickname,
+               max(amount) as amount,
+               max(bid_time) as latestBidTime
+        from auction_bid_record
+        where room_id = #{roomId}
+        group by user_id
+        order by amount desc, latestBidTime asc
+        limit #{limit}
+    </select>
+
     <select id="countByRoomId" resultType="long">
         select count(*)
         from auction_bid_record

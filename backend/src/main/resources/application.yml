@@ -12,6 +12,12 @@ spring:
     init:
       mode: always
       schema-locations: classpath:schema.sql
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      timeout: 3s
 
 server:
   port: 8080
@@ -27,3 +33,13 @@ oss:
   bucket-name: howbirdfly
   access-key-id:
   access-key-secret:
+
+auction:
+  cache:
+    redis:
+      enabled: false
+      lobby-ttl: 30m
+      room-ttl: 30m
+      leaderboard-ttl: 30m
+      hot-room-window: 1h
+      hot-room-buffer: 10m

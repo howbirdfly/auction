@@ -1,5 +1,6 @@
 package com.auction.backend.auction.controller;
 
+import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
 import com.auction.backend.auction.dto.CreateAuctionRequest;
@@ -34,6 +35,11 @@ public class AuctionController {
     @GetMapping("/{roomId}")
     public ApiResponse<AuctionRoomSnapshot> getRoom(@PathVariable String roomId) {
         return ApiResponse.success(auctionService.getRoom(roomId));
+    }
+
+    @GetMapping("/{roomId}/leaderboard")
+    public ApiResponse<List<AuctionLeaderboardEntry>> getLeaderboard(@PathVariable String roomId) {
+        return ApiResponse.success(auctionService.getLeaderboard(roomId));
     }
 
     @PostMapping

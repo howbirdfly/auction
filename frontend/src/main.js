@@ -5,6 +5,7 @@ import {
   deleteRoom,
   createRoom,
   createRoomCoverUploadPolicy,
+  fetchLeaderboard,
   fetchRoom,
   fetchRooms,
   fetchUsers,
@@ -32,6 +33,7 @@ const state = {
   currentUser: null,
   selectedRoomId: null,
   selectedRoom: null,
+  selectedRoomLeaderboard: [],
   socket: null,
   activeTab: "home",
   activeChannel: "推荐",
@@ -376,6 +378,44 @@ function renderBidPanel(room) {
   `;
 }
 
+function renderLeaderboardPanel() {
+  const leaderboard = state.selectedRoomLeaderboard || [];
+  const currentUser = getCurrentUser();
+
+  return `
+    <section class="room-panel">
+      <div class="section-header compact">
+        <div>
+          <h2>Live Ranking</h2>
+          <p>Top bidders update here as the room gets closer to closing.</p>
+        </div>
+      </div>
+      <div class="leaderboard-list">
+        ${
+          leaderboard.length
+            ? leaderboard
+                .map(
+                  (entry) => `
+                    <div class="leaderboard-row ${currentUser?.account === entry.userId ? "current-user" : ""}">
+                      <div class="leaderboard-user">
+                        <span class="leaderboard-rank">#${entry.rank}</span>
+                        <div>
+                          <strong>${entry.nickname}</strong>
+                          <span>${entry.userId}</span>
+                        </div>
+                      </div>
+                      <b class="leaderboard-amount">${formatPrice(entry.amount)}</b>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="empty-card">No bids on the board yet.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderRoomView() {
   const room = state.selectedRoom;
 
@@ -429,6 +469,8 @@ function renderRoomView() {
         </div>
       </section>
 
+      ${renderLeaderboardPanel()}
+
       <section class="room-panel">
         <div class="section-header compact">
           <div>
@@ -480,6 +522,7 @@ function renderRoomView() {
   screenEl.querySelector("#backToLobby")?.addEventListener("click", () => {
     state.selectedRoomId = null;
     state.selectedRoom = null;
+    state.selectedRoomLeaderboard = [];
     renderPage();
   });
 
@@ -825,6 +868,7 @@ async function loadRooms() {
     if (!stillExists) {
       state.selectedRoomId = null;
       state.selectedRoom = null;
+      state.selectedRoomLeaderboard = [];
     }
   }
 }
@@ -834,10 +878,16 @@ async function loadUsers() {
   syncCurrentUser();
 }
 
+async function loadSelectedRoom(roomId) {
+  const [room, leaderboard] = await Promise.all([fetchRoom(roomId), fetchLeaderboard(roomId)]);
+  state.selectedRoom = room;
+  state.selectedRoomLeaderboard = leaderboard;
+}
+
 async function openRoom(roomId) {
   try {
     state.selectedRoomId = roomId;
-    state.selectedRoom = await fetchRoom(roomId);
+    await loadSelectedRoom(roomId);
     state.socket?.subscribeRoom(roomId);
     renderPage();
   } catch (error) {
@@ -1015,6 +1065,7 @@ async function handleBid(event) {
   try {
     const room = await createBid(state.selectedRoomId, payload);
     state.selectedRoom = room;
+    state.selectedRoomLeaderboard = await fetchLeaderboard(state.selectedRoomId);
     state.rooms = state.rooms.map((item) => (item.roomId === room.roomId ? room : item));
     setFeedback(`出价成功，当前领先者：${room.leaderNickname}`);
     renderPage();
@@ -1032,6 +1083,7 @@ async function handleDeleteRoom(roomId) {
     await deleteRoom(roomId);
     state.selectedRoomId = null;
     state.selectedRoom = null;
+    state.selectedRoomLeaderboard = [];
     await loadRooms();
     state.activeTab = "home";
     setFeedback(`Deleted room ${roomId}`);
@@ -1059,7 +1111,7 @@ async function refreshRoomsSilently() {
     }
 
     if (state.selectedRoomId) {
-      state.selectedRoom = await fetchRoom(state.selectedRoomId);
+      await loadSelectedRoom(state.selectedRoomId);
     }
 
     renderPage();
@@ -1077,6 +1129,7 @@ bottomNavItems.forEach((item) => {
     if (item.dataset.tab !== "home") {
       state.selectedRoomId = null;
       state.selectedRoom = null;
+      state.selectedRoomLeaderboard = [];
     }
     renderPage();
   });
