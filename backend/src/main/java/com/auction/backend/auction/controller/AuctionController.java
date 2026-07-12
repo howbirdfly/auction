@@ -6,6 +6,7 @@ import com.auction.backend.auction.dto.CreateAuctionRequest;
 import com.auction.backend.auction.service.AuctionService;
 import com.auction.backend.common.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,5 +45,11 @@ public class AuctionController {
     public ApiResponse<AuctionRoomSnapshot> placeBid(@PathVariable String roomId,
                                                      @Valid @RequestBody BidRequest request) {
         return ApiResponse.success("bid accepted", auctionService.placeBid(roomId, request));
+    }
+
+    @DeleteMapping("/{roomId}")
+    public ApiResponse<Void> deleteExpiredRoom(@PathVariable String roomId) {
+        auctionService.deleteExpiredRoom(roomId);
+        return ApiResponse.success("expired auction room deleted", null);
     }
 }

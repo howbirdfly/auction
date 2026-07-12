@@ -2,7 +2,9 @@ import "./styles.css";
 import {
   createAvatarUploadPolicy,
   createBid,
+  deleteRoom,
   createRoom,
+  createRoomCoverUploadPolicy,
   fetchRoom,
   fetchRooms,
   fetchUsers,
@@ -35,6 +37,7 @@ const state = {
   activeChannel: "推荐",
   feedback: "",
   feedbackError: false,
+  draftRoomImageUrl: "",
 };
 
 const app = document.querySelector("#app");
@@ -151,6 +154,16 @@ function getCurrentUserCreatedRooms() {
     return [];
   }
   return state.rooms.filter((room) => room.anchorName === currentUser.nickname);
+}
+
+function getRoomSortScore(room) {
+  const statusScore = room.status === "BIDDING" ? 1 : 0;
+  const roomNumber = Number(String(room.roomId || "").replace(/[^\d]/g, "")) || 0;
+  return statusScore * 1000000 + roomNumber;
+}
+
+function sortRooms(rooms) {
+  return [...rooms].sort((left, right) => getRoomSortScore(right) - getRoomSortScore(left));
 }
 
 function renderHomeHeader() {
@@ -444,6 +457,22 @@ function renderRoomView() {
         </div>
       </section>
 
+      ${
+        room.status === "CLOSED" && getCurrentUser()?.nickname === room.anchorName
+          ? `
+            <section class="room-panel room-danger-panel">
+              <div class="section-header compact">
+                <div>
+                  <h2>Delete Room</h2>
+                  <p>Closed rooms can be removed from the lobby after the auction ends.</p>
+                </div>
+              </div>
+              <button type="button" class="danger-button" id="deleteExpiredRoomButton">Delete Closed Room</button>
+            </section>
+          `
+          : ""
+      }
+
       ${renderBidPanel(room)}
     </section>
   `;
@@ -455,6 +484,9 @@ function renderRoomView() {
   });
 
   screenEl.querySelector("#bidForm")?.addEventListener("submit", handleBid);
+  screenEl.querySelector("#deleteExpiredRoomButton")?.addEventListener("click", () => {
+    handleDeleteRoom(room.roomId);
+  });
   bindBidAmountControls(room);
 }
 
@@ -469,19 +501,38 @@ function renderPublishView() {
         <p class="hero-text">把创建房间单独放在这里，首页负责逛房间，个人页只保留和账号相关的内容。</p>
       </section>
 
-      <section class="room-panel">
+      <section class="room-panel publish-panel">
         <div class="section-header compact">
           <div>
             <h2>创建拍卖房</h2>
             <p>${currentUser ? `当前默认使用 ${currentUser.nickname} 作为主播名。` : "请先去“我的”选择一个账号后再发布。"}</p>
           </div>
         </div>
-        <form id="createForm" class="stack-form">
+        <form id="createForm" class="stack-form publish-form">
+          <div class="cover-upload-card">
+            <div class="cover-upload-preview">
+              <img
+                id="roomCoverPreview"
+                src="${state.draftRoomImageUrl || DEFAULT_IMAGE}"
+                alt="房间封面预览"
+                onerror="this.src='${DEFAULT_IMAGE}'"
+              />
+            </div>
+            <div class="cover-upload-meta">
+              <strong>房间封面</strong>
+              <span>建议上传 1:1 或 4:3 的商品图</span>
+            </div>
+            <button type="button" class="ghost-button compact-button" id="uploadRoomCoverButton">上传图片</button>
+            <input id="roomCoverFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          </div>
+
           <input name="itemTitle" placeholder="拍品名称" required />
           <input name="anchorName" placeholder="主播名称" value="${currentUser?.nickname || ""}" required />
-          <input name="imageUrl" placeholder="房间封面图链接（可选）" />
-          <input name="startPrice" type="number" min="0.01" step="0.01" placeholder="起拍价" required />
-          <input name="stepPrice" type="number" min="0.01" step="0.01" placeholder="加价幅度" required />
+          <input name="imageUrl" value="${state.draftRoomImageUrl}" hidden />
+          <div class="compact-grid">
+            <input name="startPrice" type="number" min="0.01" step="0.01" placeholder="起拍价" required />
+            <input name="stepPrice" type="number" min="0.01" step="0.01" placeholder="加价幅度" required />
+          </div>
           <input name="durationSeconds" type="number" min="30" step="1" placeholder="持续时长（秒）" required />
           <button type="submit">立即发布房间</button>
         </form>
@@ -490,6 +541,10 @@ function renderPublishView() {
   `;
 
   screenEl.querySelector("#createForm")?.addEventListener("submit", handleCreateRoom);
+  screenEl.querySelector("#uploadRoomCoverButton")?.addEventListener("click", () => {
+    screenEl.querySelector("#roomCoverFileInput")?.click();
+  });
+  screenEl.querySelector("#roomCoverFileInput")?.addEventListener("change", handleRoomCoverSelected);
 }
 
 function renderProfileView() {
@@ -763,7 +818,7 @@ function updateCountdownDisplay() {
 }
 
 async function loadRooms() {
-  state.rooms = await fetchRooms();
+  state.rooms = sortRooms(await fetchRooms());
 
   if (state.selectedRoomId) {
     const stillExists = state.rooms.some((room) => room.roomId === state.selectedRoomId);
@@ -792,8 +847,9 @@ async function openRoom(roomId) {
 
 async function handleCreateRoom(event) {
   event.preventDefault();
+  const form = event.currentTarget;
   const currentUser = getCurrentUser();
-  const formData = new FormData(event.currentTarget);
+  const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
   payload.anchorName = payload.anchorName || currentUser?.nickname || "匿名主播";
   payload.startPrice = Number(payload.startPrice);
@@ -802,14 +858,57 @@ async function handleCreateRoom(event) {
 
   try {
     const room = await createRoom(payload);
-    event.currentTarget.reset();
-    event.currentTarget.elements.anchorName.value = currentUser?.nickname || "";
+    form.reset();
+    form.elements.anchorName.value = currentUser?.nickname || "";
+    form.elements.imageUrl.value = "";
+    state.draftRoomImageUrl = "";
     setFeedback(`已发布房间 ${room.roomId}`);
     state.activeTab = "home";
     await loadRooms();
-    renderPage();
+    await openRoom(room.roomId);
   } catch (error) {
     setFeedback(error.message, true);
+  }
+}
+
+async function handleRoomCoverSelected(event) {
+  const currentUser = getCurrentUser();
+  const file = event.target.files?.[0];
+
+  if (!currentUser || !file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setFeedback("请选择图片文件作为房间封面", true);
+    event.target.value = "";
+    return;
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    setFeedback("房间封面不能超过 8MB", true);
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const uploadPolicy = await createRoomCoverUploadPolicy({
+      userId: currentUser.userId,
+      fileName: file.name,
+      contentType: file.type,
+    });
+    state.draftRoomImageUrl = await uploadAvatarToOss(file, uploadPolicy);
+    screenEl.querySelector('input[name="imageUrl"]')?.setAttribute("value", state.draftRoomImageUrl);
+    const hiddenImageInput = screenEl.querySelector('input[name="imageUrl"]');
+    if (hiddenImageInput) {
+      hiddenImageInput.value = state.draftRoomImageUrl;
+    }
+    screenEl.querySelector("#roomCoverPreview")?.setAttribute("src", state.draftRoomImageUrl);
+    setFeedback("房间封面已上传");
+  } catch (error) {
+    setFeedback(error.message, true);
+  } finally {
+    event.target.value = "";
   }
 }
 
@@ -924,12 +1023,48 @@ async function handleBid(event) {
   }
 }
 
+async function handleDeleteRoom(roomId) {
+  if (!window.confirm(`Delete closed room ${roomId}?`)) {
+    return;
+  }
+
+  try {
+    await deleteRoom(roomId);
+    state.selectedRoomId = null;
+    state.selectedRoom = null;
+    await loadRooms();
+    state.activeTab = "home";
+    setFeedback(`Deleted room ${roomId}`);
+    renderPage();
+  } catch (error) {
+    setFeedback(error.message, true);
+  }
+}
+
 async function bootstrap() {
   try {
     await Promise.all([loadRooms(), loadUsers()]);
     renderPage();
   } catch (error) {
     setFeedback(error.message, true);
+  }
+}
+
+async function refreshRoomsSilently() {
+  try {
+    await loadRooms();
+
+    if (state.activeTab !== "home") {
+      return;
+    }
+
+    if (state.selectedRoomId) {
+      state.selectedRoom = await fetchRoom(state.selectedRoomId);
+    }
+
+    renderPage();
+  } catch {
+    // Keep the current UI when background refresh fails.
   }
 }
 
@@ -976,3 +1111,7 @@ setInterval(() => {
 
   updateCountdownDisplay();
 }, 1000);
+
+setInterval(() => {
+  refreshRoomsSilently();
+}, 10000);

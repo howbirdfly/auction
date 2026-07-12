@@ -3,6 +3,7 @@ package com.auction.backend.upload.service;
 import com.auction.backend.upload.config.OssProperties;
 import com.auction.backend.upload.dto.AvatarUploadPolicyRequest;
 import com.auction.backend.upload.dto.AvatarUploadPolicySnapshot;
+import com.auction.backend.upload.dto.RoomCoverUploadPolicyRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,6 +29,7 @@ public class OssUploadService {
     );
     private static final int SUCCESS_ACTION_STATUS = 200;
     private static final long MAX_AVATAR_SIZE_BYTES = 5L * 1024L * 1024L;
+    private static final long MAX_ROOM_COVER_SIZE_BYTES = 8L * 1024L * 1024L;
 
     private final OssProperties ossProperties;
 
@@ -41,11 +43,22 @@ public class OssUploadService {
 
         Instant expireAt = Instant.now().plus(5, ChronoUnit.MINUTES);
         String extension = resolveExtension(request.fileName(), request.contentType());
-        String objectKey = "avatars/" + sanitizeSegment(request.userId()) + "/"
-                + Instant.now().toEpochMilli() + "-" + UUID.randomUUID().toString().replace("-", "")
-                + extension;
+        String objectKey = buildObjectKey("avatars", request.userId(), extension);
+        return buildUploadPolicySnapshot(objectKey, expireAt, MAX_AVATAR_SIZE_BYTES);
+    }
 
-        String policyJson = buildPolicyJson(expireAt, objectKey);
+    public AvatarUploadPolicySnapshot createRoomCoverUploadPolicy(RoomCoverUploadPolicyRequest request) {
+        validateOssConfigured();
+        validateContentType(request.contentType());
+
+        Instant expireAt = Instant.now().plus(5, ChronoUnit.MINUTES);
+        String extension = resolveExtension(request.fileName(), request.contentType());
+        String objectKey = buildObjectKey("room-covers", request.userId(), extension);
+        return buildUploadPolicySnapshot(objectKey, expireAt, MAX_ROOM_COVER_SIZE_BYTES);
+    }
+
+    private AvatarUploadPolicySnapshot buildUploadPolicySnapshot(String objectKey, Instant expireAt, long maxFileSizeBytes) {
+        String policyJson = buildPolicyJson(expireAt, objectKey, maxFileSizeBytes);
         String encodedPolicy = Base64.getEncoder().encodeToString(policyJson.getBytes(StandardCharsets.UTF_8));
         String signature = signPolicy(encodedPolicy, ossProperties.getAccessKeySecret());
         String host = "https://" + ossProperties.getBucketName() + "." + normalizeEndpoint(ossProperties.getEndpoint());
@@ -78,14 +91,20 @@ public class OssUploadService {
         }
     }
 
-    private String buildPolicyJson(Instant expireAt, String objectKey) {
+    private String buildPolicyJson(Instant expireAt, String objectKey, long maxFileSizeBytes) {
         String prefix = objectKey.substring(0, objectKey.lastIndexOf('/') + 1);
         return "{\"expiration\":\"" + expireAt.toString() + "\",\"conditions\":["
                 + "{\"bucket\":\"" + escapeJson(ossProperties.getBucketName()) + "\"},"
                 + "[\"starts-with\",\"$key\",\"" + escapeJson(prefix) + "\"],"
                 + "[\"eq\",\"$success_action_status\",\"" + SUCCESS_ACTION_STATUS + "\"],"
-                + "[\"content-length-range\",0," + MAX_AVATAR_SIZE_BYTES + "]"
+                + "[\"content-length-range\",0," + maxFileSizeBytes + "]"
                 + "]}";
+    }
+
+    private String buildObjectKey(String prefix, String userId, String extension) {
+        return prefix + "/" + sanitizeSegment(userId) + "/"
+                + Instant.now().toEpochMilli() + "-" + UUID.randomUUID().toString().replace("-", "")
+                + extension;
     }
 
     private String signPolicy(String encodedPolicy, String accessKeySecret) {

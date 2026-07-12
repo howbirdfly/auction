@@ -38,6 +38,12 @@ export function createBid(roomId, form) {
   });
 }
 
+export function deleteRoom(roomId) {
+  return request(`/auctions/${roomId}`, {
+    method: "DELETE",
+  });
+}
+
 export function fetchUsers() {
   return request("/users");
 }
@@ -55,6 +61,13 @@ export function updateUser(userId, form) {
 
 export function createAvatarUploadPolicy(form) {
   return request("/uploads/avatar-policy", {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
+export function createRoomCoverUploadPolicy(form) {
+  return request("/uploads/room-cover-policy", {
     method: "POST",
     body: JSON.stringify(form),
   });

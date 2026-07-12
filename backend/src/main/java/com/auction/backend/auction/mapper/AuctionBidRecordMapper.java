@@ -14,4 +14,6 @@ public interface AuctionBidRecordMapper {
     List<AuctionBidRecordEntity> findLatestByRoomId(@Param("roomId") String roomId, @Param("limit") int limit);
 
     long countByRoomId(@Param("roomId") String roomId);
+
+    int deleteByRoomId(@Param("roomId") String roomId);
 }

@@ -42,4 +42,9 @@
         from auction_bid_record
         where room_id = #{roomId}
     </select>
+
+    <delete id="deleteByRoomId">
+        delete from auction_bid_record
+        where room_id = #{roomId}
+    </delete>
 </mapper>

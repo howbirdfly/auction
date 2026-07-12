@@ -85,6 +85,18 @@ public class AuctionService {
     }
 
     @Transactional
+    public void deleteExpiredRoom(String roomId) {
+        AuctionRoom room = findRoom(roomId);
+        if (room.getStatus() != AuctionStatus.CLOSED && Instant.now().isBefore(room.getEndsAt())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "only closed auction rooms can be deleted");
+        }
+
+        auctionBidRecordMapper.deleteByRoomId(roomId);
+        auctionRoomMapper.deleteById(roomId);
+        broadcastService.broadcastLobby(listRooms());
+    }
+
+    @Transactional
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoom room = auctionRoomMapper.findByIdForUpdate(roomId);
         if (room == null) {

@@ -112,4 +112,9 @@
         set status = #{status}
         where room_id = #{roomId}
     </update>
+
+    <delete id="deleteById">
+        delete from auction_room
+        where room_id = #{roomId}
+    </delete>
 </mapper>

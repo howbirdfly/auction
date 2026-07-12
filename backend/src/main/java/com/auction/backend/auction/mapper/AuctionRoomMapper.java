@@ -28,4 +28,6 @@ public interface AuctionRoomMapper {
     int updateAfterBid(AuctionRoom room);
 
     int updateStatus(@Param("roomId") String roomId, @Param("status") AuctionStatus status);
+
+    int deleteById(@Param("roomId") String roomId);
 }

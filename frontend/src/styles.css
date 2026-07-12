@@ -491,7 +491,7 @@ button {
 .stack-form input,
 .stack-form textarea,
 .stack-form select {
-  padding: 13px 14px;
+  padding: 12px 14px;
   border: 1px solid #d9dfeb;
   border-radius: 16px;
   background: #fff;
@@ -516,11 +516,76 @@ button {
 }
 
 .stack-form button {
-  padding: 13px 14px;
+  padding: 12px 14px;
   border-radius: 16px;
   background: linear-gradient(135deg, #ff7a18, #ff9f43);
   color: #fff;
   font-weight: 800;
+}
+
+.publish-screen {
+  gap: 12px;
+}
+
+.publish-hero {
+  padding: 14px 16px;
+}
+
+.publish-hero h1 {
+  font-size: clamp(1.5rem, 6vw, 2rem);
+}
+
+.publish-panel {
+  padding: 14px;
+}
+
+.publish-form {
+  gap: 10px;
+}
+
+.compact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cover-upload-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  background: #f8fafe;
+  border: 1px solid rgba(32, 36, 44, 0.06);
+}
+
+.cover-upload-preview {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.cover-upload-preview img {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+}
+
+.cover-upload-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.cover-upload-meta strong {
+  font-size: 1rem;
+}
+
+.cover-upload-meta span {
+  color: #7d8696;
+  font-size: 0.88rem;
+}
+
+.compact-button {
+  padding: 10px 14px;
 }
 
 .bid-row,
@@ -618,6 +683,21 @@ button {
   overflow: hidden;
 }
 
+.room-danger-panel {
+  border-color: rgba(225, 29, 72, 0.12);
+  background: rgba(255, 245, 247, 0.96);
+}
+
+.danger-button {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff1f2;
+  border: 1px solid rgba(225, 29, 72, 0.16);
+  color: #be123c;
+  font-weight: 800;
+}
+
 .feedback-banner {
   display: none;
   position: fixed;
@@ -649,7 +729,7 @@ button {
   left: 50%;
   bottom: 10px;
   transform: translateX(-50%);
-  width: min(calc(100% - 20px), 360px);
+  width: min(calc(100% - 28px), 340px);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
@@ -687,19 +767,19 @@ button {
 }
 
 .publish-entry {
-  transform: translateY(-26px);
+  transform: translateY(-22px);
 }
 
 .publish-entry-badge {
-  width: 66px;
-  height: 66px;
+  width: 60px;
+  height: 60px;
   margin: 0 auto;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: linear-gradient(135deg, #ffe36b, #ffd23f);
   box-shadow: 0 16px 28px rgba(255, 210, 63, 0.32);
-  font-size: 1.8rem;
+  font-size: 1.6rem;
 }
 
 .publish-entry strong {
