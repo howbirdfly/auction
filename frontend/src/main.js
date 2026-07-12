@@ -1,27 +1,26 @@
 import "./styles.css";
 import {
+  createAvatarUploadPolicy,
   createBid,
   createRoom,
-  createAvatarUploadPolicy,
   fetchRoom,
   fetchRooms,
   fetchUsers,
-  uploadAvatarToOss,
   updateUser,
+  uploadAvatarToOss,
 } from "./api";
 import { createAuctionSocket } from "./socket";
 
 const DEFAULT_IMAGE = "https://placehold.co/800x600/f6f7fb/1f2937?text=Auction+Room";
 const DEFAULT_AVATAR = "https://placehold.co/256x256/f3f4f6/111827?text=User";
 const CURRENT_USER_STORAGE_KEY = "auction-current-user-id";
+
 const CHANNELS = ["关注", "推荐", "新发", "省钱神券", "找服务", "热卖"];
 const CATEGORIES = [
   { icon: "🍔", label: "吃喝玩乐" },
   { icon: "📱", label: "手机数码" },
   { icon: "♻️", label: "上门回收" },
   { icon: "🏠", label: "二手好物" },
-  { icon: "🎁", label: "盲盒潮玩" },
-  { icon: "💎", label: "宝藏专场" },
 ];
 
 const state = {
@@ -49,6 +48,10 @@ app.innerHTML = `
         <span class="bottom-nav-icon">🏠</span>
         <strong>首页</strong>
       </button>
+      <button class="bottom-nav-item publish-entry" data-tab="publish">
+        <span class="publish-entry-badge">📷</span>
+        <strong>发布</strong>
+      </button>
       <button class="bottom-nav-item" data-tab="profile">
         <span class="bottom-nav-icon">🙂</span>
         <strong>我的</strong>
@@ -62,7 +65,7 @@ const feedbackBannerEl = document.querySelector("#feedbackBanner");
 const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
 
 function formatPrice(value) {
-  return `¥${Number(value).toFixed(2)}`;
+  return `¥${Number(value || 0).toFixed(2)}`;
 }
 
 function formatCountdown(seconds) {
@@ -142,15 +145,23 @@ function getCurrentUserLeadingRooms() {
   return state.rooms.filter((room) => room.leaderNickname === currentUser.nickname);
 }
 
+function getCurrentUserCreatedRooms() {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    return [];
+  }
+  return state.rooms.filter((room) => room.anchorName === currentUser.nickname);
+}
+
 function renderHomeHeader() {
   return `
     <section class="home-top">
       <div class="search-row">
-        <button class="badge-button">签到</button>
+        <button class="badge-button" data-placeholder="签到功能后续接入">签到</button>
         <div class="search-shell">
           <span class="search-placeholder">搜索拍品、房间或主播</span>
           <span class="search-actions">📷</span>
-          <button class="search-button">搜索</button>
+          <button class="search-button" data-placeholder="搜索功能后续接入">搜索</button>
         </div>
       </div>
 
@@ -172,7 +183,7 @@ function renderCategoryRow() {
     <section class="category-row">
       ${CATEGORIES.map(
         (category) => `
-          <button class="category-item placeholder" data-placeholder="${category.label}功能后续接入">
+          <button class="category-item" data-placeholder="${category.label}分类后续接入">
             <span class="category-icon">${category.icon}</span>
             <span>${category.label}</span>
           </button>
@@ -189,7 +200,29 @@ function renderPromoBanner() {
         <p>直播竞拍先上拍卖场</p>
         <strong>精选房间低价起拍</strong>
       </div>
-      <span>去围观</span>
+      <button class="promo-button" data-placeholder="活动会场后续接入">去围观</button>
+    </section>
+  `;
+}
+
+function renderHomeStats() {
+  const liveRooms = state.rooms.filter((room) => room.status === "BIDDING").length;
+  const closedRooms = state.rooms.filter((room) => room.status === "CLOSED").length;
+
+  return `
+    <section class="home-stats">
+      <article class="metric-card">
+        <span>竞拍中</span>
+        <strong>${liveRooms}</strong>
+      </article>
+      <article class="metric-card">
+        <span>已结束</span>
+        <strong>${closedRooms}</strong>
+      </article>
+      <button class="metric-card metric-action" id="refreshRoomsButton">
+        <span>房间列表</span>
+        <strong>刷新房间</strong>
+      </button>
     </section>
   `;
 }
@@ -217,7 +250,7 @@ function renderRoomCard(room) {
         </div>
         <p class="feed-room-note">${room.anchorName} · ${room.leaderNickname || "暂无领先者"}</p>
         <div class="feed-room-footer">
-          <span>房间号 ${room.roomId}</span>
+          <span>${room.roomId}</span>
           <span>${room.bidCount} 次出价</span>
         </div>
       </div>
@@ -230,12 +263,13 @@ function renderLobbyView() {
     ${renderHomeHeader()}
     ${renderCategoryRow()}
     ${renderPromoBanner()}
+    ${renderHomeStats()}
 
     <section class="feed-grid">
       ${
         state.rooms.length
           ? state.rooms.map(renderRoomCard).join("")
-          : `<div class="empty-card">暂时还没有房间，去“我的”里先创建一个体验房间吧。</div>`
+          : `<div class="empty-card">暂时还没有房间，去“发布”里先创建一个拍卖房间吧。</div>`
       }
     </section>
   `;
@@ -253,6 +287,16 @@ function renderLobbyView() {
     });
   });
 
+  screenEl.querySelector("#refreshRoomsButton")?.addEventListener("click", async () => {
+    try {
+      await loadRooms();
+      setFeedback("房间列表已刷新");
+      renderPage();
+    } catch (error) {
+      setFeedback(error.message, true);
+    }
+  });
+
   bindPlaceholderButtons();
 }
 
@@ -265,7 +309,7 @@ function renderBidPanel(room) {
         <div class="section-header compact">
           <div>
             <h2>模拟出价</h2>
-            <p>请先到“我的”里选择一个当前演示账号，再回来出价。</p>
+            <p>请先去“我的”里选择一个当前演示账号，再回来参与出价。</p>
           </div>
         </div>
       </section>
@@ -292,15 +336,27 @@ function renderBidPanel(room) {
       </div>
 
       <form id="bidForm" class="stack-form">
-        <input
-          name="amount"
-          type="number"
-          min="0.01"
-          step="0.01"
-          placeholder="本次出价金额"
-          value="${Number(room.minNextBid).toFixed(2)}"
-          required
-        />
+        <div class="bid-amount-panel">
+          <div class="bid-amount-label">
+            <span>本次出价</span>
+            <strong>每次加价 ${formatPrice(room.stepPrice)}</strong>
+          </div>
+          <div class="bid-stepper">
+            <button type="button" class="bid-step-button" data-bid-adjust="-1">-</button>
+            <input
+              id="bidAmountInput"
+              name="amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputmode="decimal"
+              placeholder="本次出价金额"
+              value="${Number(room.currentPrice).toFixed(2)}"
+              required
+            />
+            <button type="button" class="bid-step-button" data-bid-adjust="1">+</button>
+          </div>
+        </div>
         <button type="submit">立即出价</button>
       </form>
     </section>
@@ -320,7 +376,7 @@ function renderRoomView() {
       <header class="room-topbar">
         <button id="backToLobby" class="back-button">返回</button>
         <div class="room-topbar-meta">
-          <span class="status-pill ${room.status === "CLOSED" ? "closed" : ""}">
+          <span class="status-pill inline ${room.status === "CLOSED" ? "closed" : ""}">
             ${room.status === "CLOSED" ? "已结束" : "竞拍中"}
           </span>
           <strong>${room.roomId}</strong>
@@ -399,21 +455,54 @@ function renderRoomView() {
   });
 
   screenEl.querySelector("#bidForm")?.addEventListener("submit", handleBid);
+  bindBidAmountControls(room);
+}
+
+function renderPublishView() {
+  const currentUser = getCurrentUser();
+
+  screenEl.innerHTML = `
+    <section class="publish-screen">
+      <section class="publish-hero">
+        <p class="eyebrow">CREATE ROOM</p>
+        <h1>发布竞拍房间</h1>
+        <p class="hero-text">把创建房间单独放在这里，首页负责逛房间，个人页只保留和账号相关的内容。</p>
+      </section>
+
+      <section class="room-panel">
+        <div class="section-header compact">
+          <div>
+            <h2>创建拍卖房</h2>
+            <p>${currentUser ? `当前默认使用 ${currentUser.nickname} 作为主播名。` : "请先去“我的”选择一个账号后再发布。"}</p>
+          </div>
+        </div>
+        <form id="createForm" class="stack-form">
+          <input name="itemTitle" placeholder="拍品名称" required />
+          <input name="anchorName" placeholder="主播名称" value="${currentUser?.nickname || ""}" required />
+          <input name="imageUrl" placeholder="房间封面图链接（可选）" />
+          <input name="startPrice" type="number" min="0.01" step="0.01" placeholder="起拍价" required />
+          <input name="stepPrice" type="number" min="0.01" step="0.01" placeholder="加价幅度" required />
+          <input name="durationSeconds" type="number" min="30" step="1" placeholder="持续时长（秒）" required />
+          <button type="submit">立即发布房间</button>
+        </form>
+      </section>
+    </section>
+  `;
+
+  screenEl.querySelector("#createForm")?.addEventListener("submit", handleCreateRoom);
 }
 
 function renderProfileView() {
   const currentUser = getCurrentUser();
-  const liveRooms = getLiveRooms();
+  const createdRooms = getCurrentUserCreatedRooms();
   const leadingRooms = getCurrentUserLeadingRooms();
-  const createdRooms = state.rooms.filter((room) => room.anchorName === currentUser?.nickname);
-  const displayRooms = createdRooms.length ? createdRooms : leadingRooms;
 
   if (!currentUser) {
     screenEl.innerHTML = `
       <section class="profile-screen">
         <section class="profile-card">
-          <p class="eyebrow">My Center</p>
-          <h1>个人中心</h1>
+          <p class="eyebrow">MY CENTER</p>
+          <h1>个人主页</h1>
           <p>后端用户接口已经接好了，但当前还没有可用账号。</p>
         </section>
       </section>
@@ -428,24 +517,24 @@ function renderProfileView() {
           <div class="profile-mini-logo">A</div>
           <div>
             <h1>个人主页</h1>
-            <p class="profile-account">这里展示当前账号资料、我创建的房间和竞拍状态。</p>
+            <p class="profile-account">这里只展示账号资料、我创建的房间和我当前领先的竞拍。</p>
           </div>
         </div>
 
         <div class="profile-overview-actions">
           <label class="profile-account-switcher">
             <span>当前账号</span>
-          <select id="currentUserSelect">
-            ${state.users
-              .map(
-                (user) => `
-                  <option value="${user.userId}" ${user.userId === currentUser.userId ? "selected" : ""}>
-                    ${user.nickname} · @${user.account}
-                  </option>
-                `,
-              )
-              .join("")}
-          </select>
+            <select id="currentUserSelect">
+              ${state.users
+                .map(
+                  (user) => `
+                    <option value="${user.userId}" ${user.userId === currentUser.userId ? "selected" : ""}>
+                      ${user.nickname} · @${user.account}
+                    </option>
+                  `,
+                )
+                .join("")}
+            </select>
           </label>
           <button class="ghost-button" id="jumpToEditor">编辑资料</button>
         </div>
@@ -465,11 +554,6 @@ function renderProfileView() {
           </div>
         </div>
         <p class="profile-bio">${currentUser.bio || "这个用户还没有写简介。"}</p>
-
-        <div class="profile-inline-actions">
-          <button class="ghost-button" id="jumpToEditorInline">编辑主页资料</button>
-          <button class="ghost-button" id="jumpToCreateRoom">创建房间</button>
-        </div>
       </section>
 
       <section class="profile-metrics">
@@ -483,7 +567,7 @@ function renderProfileView() {
         </div>
         <div class="metric-card">
           <span>竞拍中房间</span>
-          <strong>${liveRooms.length}</strong>
+          <strong>${getLiveRooms().length}</strong>
         </div>
         <div class="metric-card">
           <span>加入时间</span>
@@ -494,39 +578,31 @@ function renderProfileView() {
       <section class="room-panel">
         <div class="section-header compact">
           <div>
-            <h2>我的房间</h2>
-            <p>这里优先展示你当前创建的房间；如果还没创建，就先展示你正在领先的房间。</p>
+            <h2>我创建的房间</h2>
+            <p>这里会展示你发布过的竞拍房间。</p>
           </div>
         </div>
         <div class="history-room-list">
           ${
-            displayRooms.length
-              ? displayRooms
-                  .map(
-                    (room) => `
-                      <button class="history-room-item" data-room-id="${room.roomId}">
-                        <img
-                          class="history-room-cover"
-                          src="${getImageUrl(room)}"
-                          alt="${room.itemTitle}"
-                          onerror="this.src='${DEFAULT_IMAGE}'"
-                        />
-                        <div class="history-room-content">
-                          <div class="history-room-title-row">
-                            <strong>${room.itemTitle}</strong>
-                            <span class="history-room-price">${formatPrice(room.currentPrice)}</span>
-                          </div>
-                          <p>${room.anchorName} · ${room.roomId}</p>
-                          <div class="history-room-meta">
-                            <span>${room.bidCount} 次出价</span>
-                            <span>${room.status === "CLOSED" ? "已结束" : "竞拍中"}</span>
-                          </div>
-                        </div>
-                      </button>
-                    `,
-                  )
-                  .join("")
-              : `<div class="empty-card">你还没有关联展示中的房间记录，后面接入真实历史表后这里会更完整。</div>`
+            createdRooms.length
+              ? createdRooms.map(renderHistoryRoomItem).join("")
+              : `<div class="empty-card">你还没有创建房间，去底部“发布”试试吧。</div>`
+          }
+        </div>
+      </section>
+
+      <section class="room-panel">
+        <div class="section-header compact">
+          <div>
+            <h2>我当前领先</h2>
+            <p>这里会展示你目前排在第一的竞拍房间。</p>
+          </div>
+        </div>
+        <div class="history-room-list">
+          ${
+            leadingRooms.length
+              ? leadingRooms.map(renderHistoryRoomItem).join("")
+              : `<div class="empty-card">你当前还没有领先中的房间。</div>`
           }
         </div>
       </section>
@@ -536,33 +612,15 @@ function renderProfileView() {
         <div class="section-header compact">
           <div>
             <h2>编辑资料</h2>
-            <p>这里已经连上后端用户接口。头像地址只在你需要更换时再填写，不会直接在主页摊开。</p>
+            <p>头像建议用上面的按钮直接上传，这里主要修改昵称、简介和密码。</p>
           </div>
         </div>
         <form id="profileForm" class="stack-form">
           <input name="nickname" placeholder="昵称" value="${currentUser.nickname}" required />
-          <input name="avatarUrl" placeholder="需要换头像时，再粘贴新的图片链接" />
+          <input name="avatarUrl" placeholder="需要手动替换时再填写新的头像地址" />
           <textarea name="bio" rows="4" placeholder="个人简介">${currentUser.bio || ""}</textarea>
           <input name="password" type="password" placeholder="新密码，不修改可留空" />
           <button type="submit">保存资料</button>
-        </form>
-      </section>
-
-      <section class="room-panel" id="createRoomAnchor">
-        <div class="section-header compact">
-          <div>
-            <h2>创建房间</h2>
-            <p>当前会默认带入你的昵称作为主播名，方便你直接发布新的竞拍房间。</p>
-          </div>
-        </div>
-        <form id="createForm" class="stack-form">
-          <input name="itemTitle" placeholder="拍品名称" required />
-          <input name="anchorName" placeholder="主播名称" value="${currentUser.nickname}" required />
-          <input name="imageUrl" placeholder="封面图链接（可选）" />
-          <input name="startPrice" type="number" min="0.01" step="0.01" placeholder="起拍价" required />
-          <input name="stepPrice" type="number" min="0.01" step="0.01" placeholder="加价幅度" required />
-          <input name="durationSeconds" type="number" min="30" step="1" placeholder="时长（秒）" required />
-          <button type="submit">创建房间</button>
         </form>
       </section>
     </section>
@@ -575,13 +633,8 @@ function renderProfileView() {
     screenEl.querySelector("#avatarFileInput")?.click();
   });
   screenEl.querySelector("#avatarFileInput")?.addEventListener("change", handleAvatarSelected);
-  screenEl.querySelectorAll("#jumpToEditor, #jumpToEditorInline").forEach((button) => {
-    button.addEventListener("click", () => {
-      document.querySelector("#profileEditorAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
-  screenEl.querySelector("#jumpToCreateRoom")?.addEventListener("click", () => {
-    document.querySelector("#createRoomAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  screenEl.querySelector("#jumpToEditor")?.addEventListener("click", () => {
+    document.querySelector("#profileEditorAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   screenEl.querySelectorAll(".history-room-item[data-room-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -590,7 +643,30 @@ function renderProfileView() {
     });
   });
   screenEl.querySelector("#profileForm")?.addEventListener("submit", handleUpdateProfile);
-  screenEl.querySelector("#createForm")?.addEventListener("submit", handleCreateRoom);
+}
+
+function renderHistoryRoomItem(room) {
+  return `
+    <button class="history-room-item" data-room-id="${room.roomId}">
+      <img
+        class="history-room-cover"
+        src="${getImageUrl(room)}"
+        alt="${room.itemTitle}"
+        onerror="this.src='${DEFAULT_IMAGE}'"
+      />
+      <div class="history-room-content">
+        <div class="history-room-title-row">
+          <strong>${room.itemTitle}</strong>
+          <span class="history-room-price">${formatPrice(room.currentPrice)}</span>
+        </div>
+        <p>${room.anchorName} · ${room.roomId}</p>
+        <div class="history-room-meta">
+          <span>${room.bidCount} 次出价</span>
+          <span>${room.status === "CLOSED" ? "已结束" : "竞拍中"}</span>
+        </div>
+      </div>
+    </button>
+  `;
 }
 
 function renderPage() {
@@ -602,6 +678,12 @@ function renderPage() {
 
   if (state.activeTab === "profile") {
     renderProfileView();
+    bindPlaceholderButtons();
+    return;
+  }
+
+  if (state.activeTab === "publish") {
+    renderPublishView();
     bindPlaceholderButtons();
     return;
   }
@@ -625,6 +707,42 @@ function bindPlaceholderButtons() {
     element.addEventListener("click", () => {
       setFeedback(element.dataset.placeholder);
     });
+  });
+}
+
+function bindBidAmountControls(room) {
+  const amountInput = document.querySelector("#bidAmountInput");
+  if (!amountInput) {
+    return;
+  }
+
+  const minNextBid = Number(room.minNextBid);
+  const currentPrice = Number(room.currentPrice);
+  const stepPrice = Number(room.stepPrice || 1);
+
+  const normalizeAmount = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) {
+      return currentPrice;
+    }
+    return Math.max(minNextBid, Number(amount.toFixed(2)));
+  };
+
+  const setAmount = (value) => {
+    amountInput.value = normalizeAmount(value).toFixed(2);
+  };
+
+  document.querySelectorAll("[data-bid-adjust]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.getAttribute("data-bid-adjust"));
+      const baseAmount = Number(amountInput.value || currentPrice);
+      const nextAmount = normalizeAmount(baseAmount + direction * stepPrice);
+      setAmount(nextAmount);
+    });
+  });
+
+  amountInput.addEventListener("blur", () => {
+    setAmount(amountInput.value);
   });
 }
 
@@ -686,7 +804,7 @@ async function handleCreateRoom(event) {
     const room = await createRoom(payload);
     event.currentTarget.reset();
     event.currentTarget.elements.anchorName.value = currentUser?.nickname || "";
-    setFeedback(`已创建房间 ${room.roomId}`);
+    setFeedback(`已发布房间 ${room.roomId}`);
     state.activeTab = "home";
     await loadRooms();
     renderPage();
@@ -821,6 +939,10 @@ bottomNavItems.forEach((item) => {
       return;
     }
     state.activeTab = item.dataset.tab;
+    if (item.dataset.tab !== "home") {
+      state.selectedRoomId = null;
+      state.selectedRoom = null;
+    }
     renderPage();
   });
 });

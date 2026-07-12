@@ -82,9 +82,7 @@ export async function uploadAvatarToOss(file, uploadPolicy) {
     const errorMessage = messageMatch?.[1];
 
     if (errorCode || errorMessage) {
-      throw new Error(
-        `头像上传失败${errorCode ? `（${errorCode}）` : ""}${errorMessage ? `：${errorMessage}` : ""}`
-      );
+      throw new Error(`头像上传失败${errorCode ? `（${errorCode}）` : ""}${errorMessage ? `：${errorMessage}` : ""}`);
     }
 
     throw new Error("头像上传到 OSS 失败");
