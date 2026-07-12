@@ -43,3 +43,5 @@ auction:
       leaderboard-ttl: 30m
       hot-room-window: 1h
       hot-room-buffer: 10m
+      hot-access-threshold: 10
+      bid-lock-ttl: 5s

@@ -56,13 +56,13 @@ public class RedisAuctionCacheService implements AuctionCacheService {
 
     @Override
     public Optional<List<AuctionLeaderboardEntry>> getLeaderboard(String roomId) {
-        String key = leaderboardKey(roomId);
-        Boolean exists = stringRedisTemplate.hasKey(key);
-        if (!Boolean.TRUE.equals(exists)) {
-            return Optional.empty();
-        }
-
         try {
+            String key = leaderboardKey(roomId);
+            Boolean exists = stringRedisTemplate.hasKey(key);
+            if (!Boolean.TRUE.equals(exists)) {
+                return Optional.empty();
+            }
+
             Set<ZSetOperations.TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
                     .reverseRangeWithScores(key, 0, 9);
             if (tuples == null || tuples.isEmpty()) {

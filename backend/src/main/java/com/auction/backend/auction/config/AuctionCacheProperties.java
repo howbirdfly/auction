@@ -15,6 +15,8 @@ public class AuctionCacheProperties {
     private Duration leaderboardTtl = Duration.ofMinutes(30);
     private Duration hotRoomWindow = Duration.ofHours(1);
     private Duration hotRoomBuffer = Duration.ofMinutes(10);
+    private int hotAccessThreshold = 10;
+    private Duration bidLockTtl = Duration.ofSeconds(5);
 
     public boolean isEnabled() {
         return enabled;
@@ -62,5 +64,21 @@ public class AuctionCacheProperties {
 
     public void setHotRoomBuffer(Duration hotRoomBuffer) {
         this.hotRoomBuffer = hotRoomBuffer;
+    }
+
+    public int getHotAccessThreshold() {
+        return hotAccessThreshold;
+    }
+
+    public void setHotAccessThreshold(int hotAccessThreshold) {
+        this.hotAccessThreshold = hotAccessThreshold;
+    }
+
+    public Duration getBidLockTtl() {
+        return bidLockTtl;
+    }
+
+    public void setBidLockTtl(Duration bidLockTtl) {
+        this.bidLockTtl = bidLockTtl;
     }
 }

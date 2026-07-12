@@ -395,10 +395,22 @@ function renderLeaderboardPanel() {
           leaderboard.length
             ? leaderboard
                 .map(
-                  (entry) => `
+                  (entry) => {
+                    const matchedUser =
+                      state.users.find((user) => user.account === entry.userId) ||
+                      state.users.find((user) => user.userId === entry.userId) ||
+                      state.users.find((user) => user.nickname === entry.nickname);
+
+                    return `
                     <div class="leaderboard-row ${currentUser?.account === entry.userId ? "current-user" : ""}">
                       <div class="leaderboard-user">
                         <span class="leaderboard-rank">#${entry.rank}</span>
+                        <img
+                          class="leaderboard-avatar"
+                          src="${getAvatarUrl(matchedUser)}"
+                          alt="${entry.nickname}"
+                          onerror="this.src='${DEFAULT_AVATAR}'"
+                        />
                         <div>
                           <strong>${entry.nickname}</strong>
                           <span>${entry.userId}</span>
@@ -406,7 +418,8 @@ function renderLeaderboardPanel() {
                       </div>
                       <b class="leaderboard-amount">${formatPrice(entry.amount)}</b>
                     </div>
-                  `,
+                  `;
+                  },
                 )
                 .join("")
             : `<div class="empty-card">No bids on the board yet.</div>`
