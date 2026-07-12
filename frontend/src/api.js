@@ -75,6 +75,18 @@ export async function uploadAvatarToOss(file, uploadPolicy) {
   });
 
   if (!response.ok) {
+    const responseText = await response.text();
+    const codeMatch = responseText.match(/<Code>([^<]+)<\/Code>/i);
+    const messageMatch = responseText.match(/<Message>([^<]+)<\/Message>/i);
+    const errorCode = codeMatch?.[1];
+    const errorMessage = messageMatch?.[1];
+
+    if (errorCode || errorMessage) {
+      throw new Error(
+        `头像上传失败${errorCode ? `（${errorCode}）` : ""}${errorMessage ? `：${errorMessage}` : ""}`
+      );
+    }
+
     throw new Error("头像上传到 OSS 失败");
   }
 

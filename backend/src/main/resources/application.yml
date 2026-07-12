@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: auction-backend
+  config:
+    import: optional:classpath:application-local.yml
+  datasource:
+    url: jdbc:h2:mem:auction;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+server:
+  port: 8080
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.auction.backend.auction.model,com.auction.backend.user.model
+  configuration:
+    map-underscore-to-camel-case: true
+
+oss:
+  endpoint: oss-cn-beijing.aliyuncs.com
+  bucket-name: howbirdfly
+  access-key-id:
+  access-key-secret:
