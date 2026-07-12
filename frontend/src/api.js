@@ -52,3 +52,31 @@ export function updateUser(userId, form) {
     body: JSON.stringify(form),
   });
 }
+
+export function createAvatarUploadPolicy(form) {
+  return request("/uploads/avatar-policy", {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
+export async function uploadAvatarToOss(file, uploadPolicy) {
+  const formData = new FormData();
+  formData.append("key", uploadPolicy.objectKey);
+  formData.append("policy", uploadPolicy.policy);
+  formData.append("OSSAccessKeyId", uploadPolicy.accessKeyId);
+  formData.append("Signature", uploadPolicy.signature);
+  formData.append("success_action_status", String(uploadPolicy.successActionStatus));
+  formData.append("file", file);
+
+  const response = await fetch(uploadPolicy.host, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("头像上传到 OSS 失败");
+  }
+
+  return uploadPolicy.publicUrl;
+}

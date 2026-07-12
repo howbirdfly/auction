@@ -11,7 +11,7 @@ public record UpdateUserRequest(
         String avatarUrl,
         @Size(max = 255, message = "must be at most 255 characters")
         String bio,
-        @Size(min = 6, max = 64, message = "must be between 6 and 64 characters")
+        @Size(max = 64, message = "must be at most 64 characters")
         String password
 ) {
 }

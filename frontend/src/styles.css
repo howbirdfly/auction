@@ -582,6 +582,12 @@ button {
   align-items: center;
 }
 
+.profile-avatar-wrap {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
 .profile-avatar {
   width: 76px;
   height: 76px;
@@ -589,6 +595,15 @@ button {
   object-fit: cover;
   flex: 0 0 auto;
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+}
+
+.profile-avatar-button {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f5f7fb;
+  color: #20242c;
+  border: 1px solid #d9dfeb;
+  font-size: 0.88rem;
 }
 
 .profile-account,

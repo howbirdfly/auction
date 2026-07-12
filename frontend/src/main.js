@@ -2,9 +2,11 @@ import "./styles.css";
 import {
   createBid,
   createRoom,
+  createAvatarUploadPolicy,
   fetchRoom,
   fetchRooms,
   fetchUsers,
+  uploadAvatarToOss,
   updateUser,
 } from "./api";
 import { createAuctionSocket } from "./socket";
@@ -451,7 +453,11 @@ function renderProfileView() {
 
       <section class="profile-card user-profile-card">
         <div class="user-profile-head">
-          <img class="profile-avatar" src="${getAvatarUrl(currentUser)}" alt="${currentUser.nickname}" />
+          <div class="profile-avatar-wrap">
+            <img class="profile-avatar" src="${getAvatarUrl(currentUser)}" alt="${currentUser.nickname}" />
+            <button type="button" class="profile-avatar-button" id="changeAvatarButton">更换头像</button>
+            <input id="avatarFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          </div>
           <div>
             <p class="eyebrow">MY AUCTION PROFILE</p>
             <h1>${currentUser.nickname}</h1>
@@ -565,6 +571,10 @@ function renderProfileView() {
   screenEl.querySelector("#currentUserSelect")?.addEventListener("change", (event) => {
     setCurrentUser(event.target.value);
   });
+  screenEl.querySelector("#changeAvatarButton")?.addEventListener("click", () => {
+    screenEl.querySelector("#avatarFileInput")?.click();
+  });
+  screenEl.querySelector("#avatarFileInput")?.addEventListener("change", handleAvatarSelected);
   screenEl.querySelectorAll("#jumpToEditor, #jumpToEditorInline").forEach((button) => {
     button.addEventListener("click", () => {
       document.querySelector("#profileEditorAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -696,6 +706,9 @@ async function handleUpdateProfile(event) {
   const formData = new FormData(event.currentTarget);
   const payload = Object.fromEntries(formData.entries());
   payload.avatarUrl = payload.avatarUrl.trim() || currentUser.avatarUrl || "";
+  if (!payload.password.trim()) {
+    delete payload.password;
+  }
 
   try {
     const updatedUser = await updateUser(currentUser.userId, payload);
@@ -716,6 +729,50 @@ async function handleUpdateProfile(event) {
     renderPage();
   } catch (error) {
     setFeedback(error.message, true);
+  }
+}
+
+async function handleAvatarSelected(event) {
+  const currentUser = getCurrentUser();
+  const file = event.target.files?.[0];
+
+  if (!currentUser || !file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setFeedback("请选择图片文件作为头像", true);
+    event.target.value = "";
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    setFeedback("头像图片不能超过 5MB", true);
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const uploadPolicy = await createAvatarUploadPolicy({
+      userId: currentUser.userId,
+      fileName: file.name,
+      contentType: file.type,
+    });
+    const avatarUrl = await uploadAvatarToOss(file, uploadPolicy);
+    const updatedUser = await updateUser(currentUser.userId, {
+      nickname: currentUser.nickname,
+      avatarUrl,
+      bio: currentUser.bio || "",
+    });
+
+    state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
+    syncCurrentUser();
+    setFeedback("头像已更新");
+    renderPage();
+  } catch (error) {
+    setFeedback(error.message, true);
+  } finally {
+    event.target.value = "";
   }
 }
 

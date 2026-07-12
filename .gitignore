@@ -20,3 +20,4 @@ frontend/dist/
 # Env
 .env
 .env.*
+backend/oss-local.properties

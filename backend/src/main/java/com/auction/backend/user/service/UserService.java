@@ -79,6 +79,9 @@ public class UserService {
         userAccount.setAvatarUrl(resolveAvatarUrl(request.avatarUrl()));
         userAccount.setBio(resolveBio(request.bio()));
         if (request.password() != null && !request.password().isBlank()) {
+            if (request.password().length() < 6) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password must be at least 6 characters");
+            }
             userAccount.setPassword(hashPassword(request.password()));
             userAccount.setUpdatedAt(Instant.now());
             userAccountMapper.updatePassword(userAccount);
