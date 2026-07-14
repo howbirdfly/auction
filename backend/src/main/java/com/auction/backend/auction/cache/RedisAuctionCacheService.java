@@ -4,6 +4,7 @@ import com.auction.backend.auction.config.AuctionCacheProperties;
 import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.model.AuctionStatus;
+import com.auction.backend.auction.model.BidRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,6 +28,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(RedisAuctionCacheService.class);
     private static final String LOBBY_KEY = "auction:lobby:list";
+    private static final int RECENT_BID_LIMIT = 10;
     private static final TypeReference<List<AuctionRoomSnapshot>> LOBBY_TYPE = new TypeReference<>() {
     };
 
@@ -95,6 +97,35 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     }
 
     @Override
+    public Optional<List<BidRecord>> getRecentBids(String roomId) {
+        try {
+            String key = recentBidKey(roomId);
+            Boolean exists = stringRedisTemplate.hasKey(key);
+            if (!Boolean.TRUE.equals(exists)) {
+                return Optional.empty();
+            }
+
+            List<String> bidPayloads = stringRedisTemplate.opsForList().range(key, 0, RECENT_BID_LIMIT - 1);
+            if (bidPayloads == null || bidPayloads.isEmpty()) {
+                return Optional.of(List.of());
+            }
+
+            List<BidRecord> recentBids = new ArrayList<>(bidPayloads.size());
+            for (String bidPayload : bidPayloads) {
+                if (bidPayload == null || bidPayload.isBlank()) {
+                    continue;
+                }
+                recentBids.add(jsonMapper.readValue(bidPayload, BidRecord.class));
+            }
+            return Optional.of(recentBids);
+        } catch (Exception exception) {
+            log.warn("Failed to read Redis recent bids for room {}", roomId, exception);
+            evictRecentBids(roomId);
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public void cacheLobby(List<AuctionRoomSnapshot> rooms) {
         writeValue(LOBBY_KEY, rooms, cacheProperties.getLobbyTtl());
     }
@@ -126,6 +157,33 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     }
 
     @Override
+    public void cacheRecentBids(String roomId, List<BidRecord> recentBids, AuctionRoomSnapshot room) {
+        evictRecentBids(roomId);
+        if (recentBids.isEmpty()) {
+            return;
+        }
+
+        Duration ttl = resolveRoomTtl(room);
+
+        try {
+            List<String> bidPayloads = recentBids.stream()
+                    .map(this::serializeBidRecord)
+                    .filter(payload -> payload != null && !payload.isBlank())
+                    .toList();
+
+            if (bidPayloads.isEmpty()) {
+                return;
+            }
+
+            stringRedisTemplate.opsForList().rightPushAll(recentBidKey(roomId), bidPayloads);
+            stringRedisTemplate.opsForList().trim(recentBidKey(roomId), 0, RECENT_BID_LIMIT - 1);
+            stringRedisTemplate.expire(recentBidKey(roomId), ttl);
+        } catch (Exception exception) {
+            log.warn("Failed to write Redis recent bids for room {}", roomId, exception);
+        }
+    }
+
+    @Override
     public void recordBid(String roomId, String userId, String nickname, BigDecimal amount, AuctionRoomSnapshot room) {
         Duration ttl = resolveLeaderboardTtl(room);
 
@@ -134,8 +192,20 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             stringRedisTemplate.opsForHash().put(leaderboardProfileKey(roomId), userId, nickname);
             stringRedisTemplate.expire(leaderboardKey(roomId), ttl);
             stringRedisTemplate.expire(leaderboardProfileKey(roomId), ttl);
+
+            Boolean recentBidKeyExists = stringRedisTemplate.hasKey(recentBidKey(roomId));
+            if (Boolean.TRUE.equals(recentBidKeyExists) && !room.recentBids().isEmpty()) {
+                String latestBid = serializeBidRecord(room.recentBids().get(0));
+                if (latestBid != null && !latestBid.isBlank()) {
+                    stringRedisTemplate.opsForList().leftPush(recentBidKey(roomId), latestBid);
+                    stringRedisTemplate.opsForList().trim(recentBidKey(roomId), 0, RECENT_BID_LIMIT - 1);
+                    stringRedisTemplate.expire(recentBidKey(roomId), resolveRoomTtl(room));
+                }
+            } else if (!room.recentBids().isEmpty()) {
+                cacheRecentBids(roomId, room.recentBids(), room);
+            }
         } catch (Exception exception) {
-            log.warn("Failed to update Redis leaderboard for room {}", roomId, exception);
+            log.warn("Failed to update Redis hot room state for room {}", roomId, exception);
         }
     }
 
@@ -153,6 +223,11 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     public void evictLeaderboard(String roomId) {
         deleteKey(leaderboardKey(roomId));
         deleteKey(leaderboardProfileKey(roomId));
+    }
+
+    @Override
+    public void evictRecentBids(String roomId) {
+        deleteKey(recentBidKey(roomId));
     }
 
     private <T> Optional<T> readValue(String key, Class<T> targetType) {
@@ -211,6 +286,10 @@ public class RedisAuctionCacheService implements AuctionCacheService {
         return "auction:room:" + roomId + ":leaderboard:profile";
     }
 
+    private String recentBidKey(String roomId) {
+        return "auction:room:" + roomId + ":recent-bids";
+    }
+
     private Duration resolveRoomTtl(AuctionRoomSnapshot room) {
         if (isHotRoom(room)) {
             return Duration.ofSeconds(Math.max(1, room.secondsRemaining())).plus(cacheProperties.getHotRoomBuffer());
@@ -252,5 +331,14 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 room.bidCount(),
                 room.recentBids()
         );
+    }
+
+    private String serializeBidRecord(BidRecord bidRecord) {
+        try {
+            return jsonMapper.writeValueAsString(bidRecord);
+        } catch (Exception exception) {
+            log.warn("Failed to serialize bid record for Redis cache", exception);
+            return null;
+        }
     }
 }

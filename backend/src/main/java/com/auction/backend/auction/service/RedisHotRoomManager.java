@@ -57,6 +57,7 @@ public class RedisHotRoomManager implements HotRoomManager {
             stringRedisTemplate.opsForValue().set(modeKey(snapshot.roomId()), "HOT", ttl);
             auctionCacheService.cacheRoom(snapshot);
             auctionCacheService.cacheLeaderboard(snapshot.roomId(), leaderboard, snapshot);
+            auctionCacheService.cacheRecentBids(snapshot.roomId(), snapshot.recentBids(), snapshot);
         } catch (Exception ignored) {
             // Fall back to MySQL path when Redis is unavailable.
         }

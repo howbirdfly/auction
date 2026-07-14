@@ -111,6 +111,7 @@ public class AuctionService {
 
         auctionBidRecordMapper.deleteByRoomId(roomId);
         auctionRoomMapper.deleteById(roomId);
+        auctionRoomReadService.evictRoomState(roomId);
         hotRoomManager.clear(roomId);
         broadcastService.broadcastLobby(auctionRoomReadService.refreshLobbyCache());
     }

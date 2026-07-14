@@ -2,6 +2,7 @@ package com.auction.backend.auction.cache;
 
 import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
+import com.auction.backend.auction.model.BidRecord;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,11 @@ public class NoOpAuctionCacheService implements AuctionCacheService {
     }
 
     @Override
+    public Optional<List<BidRecord>> getRecentBids(String roomId) {
+        return Optional.empty();
+    }
+
+    @Override
     public void cacheLobby(List<AuctionRoomSnapshot> rooms) {
         // Redis caching is disabled for the current environment.
     }
@@ -40,6 +46,11 @@ public class NoOpAuctionCacheService implements AuctionCacheService {
 
     @Override
     public void cacheLeaderboard(String roomId, List<AuctionLeaderboardEntry> entries, AuctionRoomSnapshot room) {
+        // Redis caching is disabled for the current environment.
+    }
+
+    @Override
+    public void cacheRecentBids(String roomId, List<BidRecord> recentBids, AuctionRoomSnapshot room) {
         // Redis caching is disabled for the current environment.
     }
 
@@ -60,6 +71,11 @@ public class NoOpAuctionCacheService implements AuctionCacheService {
 
     @Override
     public void evictLeaderboard(String roomId) {
+        // Redis caching is disabled for the current environment.
+    }
+
+    @Override
+    public void evictRecentBids(String roomId) {
         // Redis caching is disabled for the current environment.
     }
 }

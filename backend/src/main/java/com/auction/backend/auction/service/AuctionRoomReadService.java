@@ -48,6 +48,10 @@ public class AuctionRoomReadService {
     @Transactional(readOnly = true)
     public AuctionRoomSnapshot getRoom(String roomId) {
         return auctionCacheService.getRoom(roomId)
+                .map(snapshot -> mergeRecentBids(
+                        snapshot,
+                        auctionCacheService.getRecentBids(roomId).orElse(snapshot.recentBids())
+                ))
                 .orElseGet(() -> {
                     AuctionRoomSnapshot snapshot = toSnapshot(findRoom(roomId), true);
                     auctionCacheService.cacheRoom(snapshot);
@@ -117,6 +121,12 @@ public class AuctionRoomReadService {
         return loadLobbySnapshots();
     }
 
+    public void evictRoomState(String roomId) {
+        auctionCacheService.evictRoom(roomId);
+        auctionCacheService.evictLeaderboard(roomId);
+        auctionCacheService.evictRecentBids(roomId);
+    }
+
     public List<AuctionLeaderboardEntry> loadLeaderboard(String roomId) {
         List<AuctionLeaderboardRow> rows = auctionBidRecordMapper.findLeaderboardByRoomId(roomId, LEADERBOARD_LIMIT);
         return IntStream.range(0, rows.size())
@@ -149,6 +159,9 @@ public class AuctionRoomReadService {
     public void closeRoom(AuctionRoom room) {
         room.setStatus(AuctionStatus.CLOSED);
         auctionRoomMapper.updateStatus(room.getRoomId(), AuctionStatus.CLOSED);
+        AuctionRoomSnapshot snapshot = toSnapshot(room, true);
+        auctionCacheService.cacheRoom(snapshot);
+        auctionCacheService.cacheRecentBids(room.getRoomId(), snapshot.recentBids(), snapshot);
     }
 
     private List<AuctionRoomSnapshot> loadLobbySnapshots() {
@@ -165,6 +178,25 @@ public class AuctionRoomReadService {
                 entity.getNickname(),
                 entity.getAmount(),
                 entity.getBidTime()
+        );
+    }
+
+    private AuctionRoomSnapshot mergeRecentBids(AuctionRoomSnapshot snapshot, List<BidRecord> recentBids) {
+        return new AuctionRoomSnapshot(
+                snapshot.roomId(),
+                snapshot.itemTitle(),
+                snapshot.anchorName(),
+                snapshot.imageUrl(),
+                snapshot.status(),
+                snapshot.startPrice(),
+                snapshot.currentPrice(),
+                snapshot.stepPrice(),
+                snapshot.minNextBid(),
+                snapshot.leaderNickname(),
+                snapshot.endsAt(),
+                snapshot.secondsRemaining(),
+                snapshot.bidCount(),
+                recentBids
         );
     }
 }
