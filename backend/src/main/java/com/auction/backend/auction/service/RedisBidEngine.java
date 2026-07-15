@@ -10,16 +10,18 @@ import com.auction.backend.auction.model.AuctionBidRecordEntity;
 import com.auction.backend.auction.model.AuctionRoom;
 import com.auction.backend.auction.model.AuctionStatus;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
+import java.util.List;
 
 @Service
 @ConditionalOnProperty(name = "auction.cache.redis.enabled", havingValue = "true")
@@ -34,80 +36,64 @@ public class RedisBidEngine implements BidEngine {
     private final AuctionCacheService auctionCacheService;
     private final StringRedisTemplate stringRedisTemplate;
     private final AuctionCacheProperties auctionCacheProperties;
+    private final HotRoomManager hotRoomManager;
+    private final RedisScript<String> hotBidScript;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionCacheService auctionCacheService,
                           StringRedisTemplate stringRedisTemplate,
-                          AuctionCacheProperties auctionCacheProperties) {
+                          AuctionCacheProperties auctionCacheProperties,
+                          HotRoomManager hotRoomManager) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.auctionCacheProperties = auctionCacheProperties;
+        this.hotRoomManager = hotRoomManager;
+        DefaultRedisScript<String> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
+        script.setResultType(String.class);
+        this.hotBidScript = script;
     }
 
     @Override
     @Transactional
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
-        String lockKey = "auction:room:" + roomId + ":bid:lock";
-        String lockToken = UUID.randomUUID().toString();
-        Boolean locked = stringRedisTemplate.opsForValue()
-                .setIfAbsent(lockKey, lockToken, auctionCacheProperties.getBidLockTtl());
+        AuctionRoomSnapshot cachedRoom = auctionCacheService.getRoom(roomId)
+                .orElseGet(() -> prewarmHotRoomState(roomId));
+        validateRoomOpen(cachedRoom, Instant.now());
 
-        if (!Boolean.TRUE.equals(locked)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "room is busy, please retry");
+        long nowMillis = Instant.now().toEpochMilli();
+        String result = executeHotBidScript(roomId, request, nowMillis);
+        if (result != null && result.startsWith("ERR|ROOM_MISSING")) {
+            prewarmHotRoomState(roomId);
+            result = executeHotBidScript(roomId, request, nowMillis);
         }
 
-        try {
-            AuctionRoomSnapshot cachedRoom = auctionCacheService.getRoom(roomId)
-                    .orElseGet(() -> auctionRoomReadService.getRoom(roomId));
-            validateRoomOpen(cachedRoom, Instant.now());
+        HotBidResult hotBidResult = parseHotBidResult(roomId, result);
 
-            BigDecimal minNextBid = auctionRoomReadService.calculateMinNextBid(cachedRoom);
-            if (request.amount().compareTo(minNextBid) < 0) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "bid must be greater than or equal to " + minNextBid
-                );
-            }
+        AuctionRoom room = auctionRoomReadService.findRoom(roomId);
+        Instant bidTime = Instant.ofEpochMilli(nowMillis);
+        room.setCurrentPrice(request.amount());
+        room.setLeaderUserId(request.userId());
+        room.setLeaderNickname(request.nickname());
+        room.setEndsAt(Instant.ofEpochMilli(hotBidResult.endsAtEpochMilli()));
 
-            AuctionRoom room = auctionRoomReadService.findRoom(roomId);
-            Instant now = Instant.now();
-            room.setCurrentPrice(request.amount());
-            room.setLeaderUserId(request.userId());
-            room.setLeaderNickname(request.nickname());
+        auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
+                room.getRoomId(),
+                request.userId(),
+                request.nickname(),
+                request.amount(),
+                bidTime
+        ));
 
-            auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
-                    room.getRoomId(),
-                    request.userId(),
-                    request.nickname(),
-                    request.amount(),
-                    now
-            ));
+        auctionRoomMapper.updateAfterBid(room);
 
-            long secondsRemaining = Duration.between(now, cachedRoom.endsAt()).toSeconds();
-            if (secondsRemaining <= LAST_SECOND_EXTENSION_WINDOW) {
-                room.setEndsAt(room.getEndsAt().plusSeconds(LAST_SECOND_EXTENSION_SECONDS));
-            }
-
-            auctionRoomMapper.updateAfterBid(room);
-            AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
-            auctionCacheService.cacheRoom(snapshot);
-            auctionCacheService.recordBid(roomId, request.userId(), request.nickname(), request.amount(), snapshot);
-            return snapshot;
-        } finally {
-            try {
-                String currentToken = stringRedisTemplate.opsForValue().get(lockKey);
-                if (lockToken.equals(currentToken)) {
-                    stringRedisTemplate.delete(lockKey);
-                }
-            } catch (Exception ignored) {
-                // Let the short TTL clean up the lock if Redis is transiently unavailable.
-            }
-        }
+        return auctionCacheService.getRoom(roomId)
+                .orElseGet(() -> auctionRoomReadService.getRoom(roomId));
     }
 
     private void validateRoomOpen(AuctionRoomSnapshot room, Instant now) {
@@ -118,7 +104,84 @@ public class RedisBidEngine implements BidEngine {
         if (now.isAfter(room.endsAt())) {
             AuctionRoom dbRoom = auctionRoomReadService.findRoom(room.roomId());
             auctionRoomReadService.closeRoom(dbRoom);
+            hotRoomManager.clear(room.roomId());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
         }
+    }
+
+    private AuctionRoomSnapshot prewarmHotRoomState(String roomId) {
+        AuctionRoomSnapshot snapshot = auctionRoomReadService.getRoom(roomId);
+        auctionCacheService.cacheRoom(snapshot);
+        auctionCacheService.cacheLeaderboard(roomId, auctionRoomReadService.loadLeaderboard(roomId), snapshot);
+        auctionCacheService.cacheRecentBids(roomId, snapshot.recentBids(), snapshot);
+        return snapshot;
+    }
+
+    private String executeHotBidScript(String roomId, BidRequest request, long nowMillis) {
+        return stringRedisTemplate.execute(
+                hotBidScript,
+                List.of(
+                        "auction:room:" + roomId + ":hot-state",
+                        "auction:room:" + roomId + ":leaderboard",
+                        "auction:room:" + roomId + ":leaderboard:profile",
+                        "auction:room:" + roomId + ":recent-bids"
+                ),
+                AuctionStatus.CLOSED.name(),
+                Long.toString(nowMillis),
+                request.userId(),
+                request.nickname(),
+                request.amount().toPlainString(),
+                Long.toString(LAST_SECOND_EXTENSION_WINDOW),
+                Long.toString(LAST_SECOND_EXTENSION_SECONDS),
+                Long.toString(auctionCacheProperties.getHotRoomBuffer().toSeconds())
+        );
+    }
+
+    private HotBidResult parseHotBidResult(String roomId, String result) {
+        if (result == null || result.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "redis bid engine is unavailable");
+        }
+
+        String[] parts = result.split("\\|");
+        if ("OK".equals(parts[0]) && parts.length >= 4) {
+            return new HotBidResult(
+                    Long.parseLong(parts[1]),
+                    Integer.parseInt(parts[2]),
+                    new BigDecimal(parts[3])
+            );
+        }
+
+        if (parts.length >= 2 && "ERR".equals(parts[0])) {
+            String errorCode = parts[1];
+            switch (errorCode) {
+                case "ROOM_MISSING" -> throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "hot room state is not ready for room " + roomId
+                );
+                case "ROOM_CLOSED", "ROOM_EXPIRED" -> {
+                    AuctionRoom dbRoom = auctionRoomReadService.findRoom(roomId);
+                    auctionRoomReadService.closeRoom(dbRoom);
+                    hotRoomManager.clear(roomId);
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
+                }
+                case "BID_TOO_LOW" -> {
+                    String minBid = parts.length >= 3 ? parts[2] : "0.00";
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "bid must be greater than or equal to " + minBid
+                    );
+                }
+                default -> throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "redis bid engine is unavailable");
+            }
+        }
+
+        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "redis bid engine is unavailable");
+    }
+
+    private record HotBidResult(
+            long endsAtEpochMilli,
+            int bidCount,
+            BigDecimal minNextBid
+    ) {
     }
 }

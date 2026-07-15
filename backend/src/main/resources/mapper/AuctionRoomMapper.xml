@@ -105,6 +105,7 @@
             ends_at = #{endsAt},
             status = #{status}
         where room_id = #{roomId}
+          and current_price &lt;= #{currentPrice}
     </update>
 
     <update id="updateStatus">

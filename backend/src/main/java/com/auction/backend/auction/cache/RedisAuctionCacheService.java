@@ -18,7 +18,9 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -52,6 +54,11 @@ public class RedisAuctionCacheService implements AuctionCacheService {
 
     @Override
     public Optional<AuctionRoomSnapshot> getRoom(String roomId) {
+        Optional<AuctionRoomSnapshot> hotRoomSnapshot = readHotRoom(roomId);
+        if (hotRoomSnapshot.isPresent()) {
+            return hotRoomSnapshot;
+        }
+
         return readValue(roomKey(roomId), AuctionRoomSnapshot.class)
                 .map(this::refreshSnapshot);
     }
@@ -110,14 +117,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 return Optional.of(List.of());
             }
 
-            List<BidRecord> recentBids = new ArrayList<>(bidPayloads.size());
-            for (String bidPayload : bidPayloads) {
-                if (bidPayload == null || bidPayload.isBlank()) {
-                    continue;
-                }
-                recentBids.add(jsonMapper.readValue(bidPayload, BidRecord.class));
-            }
-            return Optional.of(recentBids);
+            return Optional.of(readBidRecords(bidPayloads));
         } catch (Exception exception) {
             log.warn("Failed to read Redis recent bids for room {}", roomId, exception);
             evictRecentBids(roomId);
@@ -133,6 +133,11 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     @Override
     public void cacheRoom(AuctionRoomSnapshot room) {
         writeValue(roomKey(room.roomId()), room, resolveRoomTtl(room));
+        if (isHotRoom(room)) {
+            cacheHotRoomState(room);
+        } else {
+            deleteKey(hotStateKey(room.roomId()));
+        }
     }
 
     @Override
@@ -217,6 +222,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     @Override
     public void evictRoom(String roomId) {
         deleteKey(roomKey(roomId));
+        deleteKey(hotStateKey(roomId));
     }
 
     @Override
@@ -278,6 +284,10 @@ public class RedisAuctionCacheService implements AuctionCacheService {
         return "auction:room:" + roomId;
     }
 
+    private String hotStateKey(String roomId) {
+        return "auction:room:" + roomId + ":hot-state";
+    }
+
     private String leaderboardKey(String roomId) {
         return "auction:room:" + roomId + ":leaderboard";
     }
@@ -335,10 +345,107 @@ public class RedisAuctionCacheService implements AuctionCacheService {
 
     private String serializeBidRecord(BidRecord bidRecord) {
         try {
-            return jsonMapper.writeValueAsString(bidRecord);
+            return jsonMapper.writeValueAsString(new CachedBidRecordPayload(
+                    bidRecord.userId(),
+                    bidRecord.nickname(),
+                    bidRecord.amount().toPlainString(),
+                    bidRecord.bidTime().toEpochMilli()
+            ));
         } catch (Exception exception) {
             log.warn("Failed to serialize bid record for Redis cache", exception);
             return null;
         }
+    }
+
+    private void cacheHotRoomState(AuctionRoomSnapshot room) {
+        Duration ttl = resolveRoomTtl(room);
+
+        try {
+            Map<String, String> state = new HashMap<>();
+            state.put("roomId", room.roomId());
+            state.put("itemTitle", room.itemTitle());
+            state.put("anchorName", room.anchorName());
+            state.put("imageUrl", room.imageUrl());
+            state.put("status", room.status().name());
+            state.put("startPrice", room.startPrice().toPlainString());
+            state.put("currentPrice", room.currentPrice().toPlainString());
+            state.put("stepPrice", room.stepPrice().toPlainString());
+            state.put("minNextBid", room.minNextBid().toPlainString());
+            state.put("leaderNickname", room.leaderNickname() == null ? "" : room.leaderNickname());
+            state.put("endsAtEpochMilli", Long.toString(room.endsAt().toEpochMilli()));
+            state.put("bidCount", Integer.toString(room.bidCount()));
+            stringRedisTemplate.opsForHash().putAll(hotStateKey(room.roomId()), state);
+            stringRedisTemplate.expire(hotStateKey(room.roomId()), ttl);
+        } catch (Exception exception) {
+            log.warn("Failed to write Redis hot room state for room {}", room.roomId(), exception);
+        }
+    }
+
+    private Optional<AuctionRoomSnapshot> readHotRoom(String roomId) {
+        try {
+            Map<Object, Object> state = stringRedisTemplate.opsForHash().entries(hotStateKey(roomId));
+            if (state == null || state.isEmpty()) {
+                return Optional.empty();
+            }
+
+            AuctionStatus status = AuctionStatus.valueOf(readStateValue(state, "status"));
+            Instant endsAt = Instant.ofEpochMilli(Long.parseLong(readStateValue(state, "endsAtEpochMilli")));
+            List<BidRecord> recentBids = getRecentBids(roomId).orElse(List.of());
+
+            return Optional.of(new AuctionRoomSnapshot(
+                    readStateValue(state, "roomId"),
+                    readStateValue(state, "itemTitle"),
+                    readStateValue(state, "anchorName"),
+                    readStateValue(state, "imageUrl"),
+                    status,
+                    new BigDecimal(readStateValue(state, "startPrice")),
+                    new BigDecimal(readStateValue(state, "currentPrice")),
+                    new BigDecimal(readStateValue(state, "stepPrice")),
+                    new BigDecimal(readStateValue(state, "minNextBid")),
+                    emptyToNull(readStateValue(state, "leaderNickname")),
+                    endsAt,
+                    status == AuctionStatus.CLOSED ? 0 : Math.max(0, Duration.between(Instant.now(), endsAt).toSeconds()),
+                    Integer.parseInt(readStateValue(state, "bidCount")),
+                    recentBids
+            ));
+        } catch (Exception exception) {
+            log.warn("Failed to read Redis hot room state for room {}", roomId, exception);
+            deleteKey(hotStateKey(roomId));
+            return Optional.empty();
+        }
+    }
+
+    private List<BidRecord> readBidRecords(List<String> bidPayloads) throws Exception {
+        List<BidRecord> recentBids = new ArrayList<>(bidPayloads.size());
+        for (String bidPayload : bidPayloads) {
+            if (bidPayload == null || bidPayload.isBlank()) {
+                continue;
+            }
+            CachedBidRecordPayload payload = jsonMapper.readValue(bidPayload, CachedBidRecordPayload.class);
+            recentBids.add(new BidRecord(
+                    payload.userId(),
+                    payload.nickname(),
+                    new BigDecimal(payload.amount()),
+                    Instant.ofEpochMilli(payload.bidTimeEpochMilli())
+            ));
+        }
+        return recentBids;
+    }
+
+    private String readStateValue(Map<Object, Object> state, String field) {
+        Object value = state.get(field);
+        return value == null ? "" : value.toString();
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private record CachedBidRecordPayload(
+            String userId,
+            String nickname,
+            String amount,
+            long bidTimeEpochMilli
+    ) {
     }
 }
