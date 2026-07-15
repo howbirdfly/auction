@@ -524,6 +524,13 @@ button {
   font-weight: 800;
 }
 
+.stack-form button:disabled,
+.bid-step-button:disabled,
+.stack-form input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .publish-screen {
   gap: 12px;
 }
@@ -593,6 +600,15 @@ button {
 .bid-user-card,
 .history-room-item {
   background: #f8fafe;
+}
+
+.bid-closed-note {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff1f2;
+  border: 1px solid rgba(225, 29, 72, 0.14);
+  color: #be123c;
+  font-weight: 600;
 }
 
 .leaderboard-row {

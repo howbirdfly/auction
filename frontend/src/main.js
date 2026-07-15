@@ -142,6 +142,10 @@ function getLiveRooms() {
   return state.rooms.filter((room) => room.status === "BIDDING");
 }
 
+function isRoomBiddingClosed(room) {
+  return !room || room.status === "CLOSED" || Number(room.secondsRemaining || 0) <= 0;
+}
+
 function getCurrentUserLeadingRooms() {
   const currentUser = getCurrentUser();
   if (!currentUser) {
@@ -317,6 +321,8 @@ function renderLobbyView() {
 
 function renderBidPanel(room) {
   const currentUser = getCurrentUser();
+  const bidClosed = isRoomBiddingClosed(room);
+  const disabledAttr = bidClosed ? "disabled" : "";
 
   if (!currentUser) {
     return `
@@ -350,6 +356,8 @@ function renderBidPanel(room) {
         </div>
       </div>
 
+      ${bidClosed ? `<div class="bid-closed-note">This auction has ended. New bids are no longer accepted.</div>` : ""}
+
       <form id="bidForm" class="stack-form">
         <div class="bid-amount-panel">
           <div class="bid-amount-label">
@@ -357,7 +365,7 @@ function renderBidPanel(room) {
             <strong>每次加价 ${formatPrice(room.stepPrice)}</strong>
           </div>
           <div class="bid-stepper">
-            <button type="button" class="bid-step-button" data-bid-adjust="-1">-</button>
+            <button type="button" class="bid-step-button" data-bid-adjust="-1" ${disabledAttr}>-</button>
             <input
               id="bidAmountInput"
               name="amount"
@@ -367,12 +375,14 @@ function renderBidPanel(room) {
               inputmode="decimal"
               placeholder="本次出价金额"
               value="${Number(room.currentPrice).toFixed(2)}"
+              ${disabledAttr}
               required
             />
-            <button type="button" class="bid-step-button" data-bid-adjust="1">+</button>
+            <button type="button" class="bid-step-button" data-bid-adjust="1" ${disabledAttr}>+</button>
           </div>
         </div>
         <button type="submit">立即出价</button>
+        <button type="submit" ${disabledAttr}>${bidClosed ? "Auction Closed" : "绔嬪嵆鍑轰环"}</button>
       </form>
     </section>
   `;
@@ -544,6 +554,7 @@ function renderRoomView() {
     handleDeleteRoom(room.roomId);
   });
   bindBidAmountControls(room);
+  syncBidPanelState();
 }
 
 function renderPublishView() {
@@ -822,6 +833,10 @@ function bindPlaceholderButtons() {
 }
 
 function bindBidAmountControls(room) {
+  if (isRoomBiddingClosed(room)) {
+    return;
+  }
+
   const amountInput = document.querySelector("#bidAmountInput");
   if (!amountInput) {
     return;
@@ -857,6 +872,41 @@ function bindBidAmountControls(room) {
   });
 }
 
+function syncBidPanelState() {
+  const room = state.selectedRoom;
+  const bidForm = document.querySelector("#bidForm");
+  if (!room || !bidForm) {
+    return;
+  }
+
+  const bidClosed = isRoomBiddingClosed(room);
+  const amountInput = document.querySelector("#bidAmountInput");
+  const adjustButtons = document.querySelectorAll("[data-bid-adjust]");
+  const submitButtons = bidForm.querySelectorAll('button[type="submit"]');
+
+  if (submitButtons.length > 1) {
+    submitButtons.forEach((button, index) => {
+      if (index < submitButtons.length - 1) {
+        button.remove();
+      }
+    });
+  }
+
+  const submitButton = bidForm.querySelector('button[type="submit"]');
+  if (amountInput) {
+    amountInput.disabled = bidClosed;
+  }
+
+  adjustButtons.forEach((button) => {
+    button.disabled = bidClosed;
+  });
+
+  if (submitButton) {
+    submitButton.disabled = bidClosed;
+    submitButton.textContent = bidClosed ? "Auction Closed" : "Bid Now";
+  }
+}
+
 function updateCountdownDisplay() {
   document.querySelectorAll("[data-room-countdown]").forEach((element) => {
     const roomId = element.getAttribute("data-room-countdown");
@@ -871,6 +921,8 @@ function updateCountdownDisplay() {
   if (roomCountdownValueEl && state.selectedRoom) {
     roomCountdownValueEl.textContent = formatCountdown(state.selectedRoom.secondsRemaining);
   }
+
+  syncBidPanelState();
 }
 
 async function loadRooms() {
@@ -1075,6 +1127,12 @@ async function handleBid(event) {
   payload.userId = currentUser.account;
   payload.nickname = currentUser.nickname;
 
+  if (isRoomBiddingClosed(state.selectedRoom)) {
+    setFeedback("Auction closed. Bidding is disabled.", true);
+    renderPage();
+    return;
+  }
+
   try {
     const room = await createBid(state.selectedRoomId, payload);
     state.selectedRoom = room;
@@ -1166,6 +1224,8 @@ state.socket = createAuctionSocket({
 bootstrap();
 
 setInterval(() => {
+  const selectedRoomWasOpen = state.selectedRoom ? !isRoomBiddingClosed(state.selectedRoom) : false;
+
   if (state.selectedRoom) {
     state.selectedRoom.secondsRemaining = Math.max(0, state.selectedRoom.secondsRemaining - 1);
   }
@@ -1176,6 +1236,10 @@ setInterval(() => {
   }));
 
   updateCountdownDisplay();
+
+  if (state.selectedRoom && selectedRoomWasOpen && isRoomBiddingClosed(state.selectedRoom)) {
+    renderPage();
+  }
 }, 1000);
 
 setInterval(() => {
