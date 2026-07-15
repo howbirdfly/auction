@@ -605,10 +605,10 @@ button {
 .bid-closed-note {
   padding: 12px 14px;
   border-radius: 16px;
-  background: #fff1f2;
-  border: 1px solid rgba(225, 29, 72, 0.14);
-  color: #be123c;
-  font-weight: 600;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #64748b;
+  font-weight: 500;
 }
 
 .leaderboard-row {

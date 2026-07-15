@@ -356,7 +356,7 @@ function renderBidPanel(room) {
         </div>
       </div>
 
-      ${bidClosed ? `<div class="bid-closed-note">This auction has ended. New bids are no longer accepted.</div>` : ""}
+      ${bidClosed ? `<div class="bid-closed-note">本场竞拍已结束，可以返回首页看看其他房间。</div>` : ""}
 
       <form id="bidForm" class="stack-form">
         <div class="bid-amount-panel">
@@ -381,8 +381,7 @@ function renderBidPanel(room) {
             <button type="button" class="bid-step-button" data-bid-adjust="1" ${disabledAttr}>+</button>
           </div>
         </div>
-        <button type="submit">立即出价</button>
-        <button type="submit" ${disabledAttr}>${bidClosed ? "Auction Closed" : "绔嬪嵆鍑轰环"}</button>
+        <button type="submit" ${disabledAttr}>${bidClosed ? "竞拍已结束" : "立即出价"}</button>
       </form>
     </section>
   `;
@@ -903,7 +902,7 @@ function syncBidPanelState() {
 
   if (submitButton) {
     submitButton.disabled = bidClosed;
-    submitButton.textContent = bidClosed ? "Auction Closed" : "Bid Now";
+    submitButton.textContent = bidClosed ? "竞拍已结束" : "立即出价";
   }
 }
 
