@@ -55,3 +55,10 @@ auction:
       exchange: auction.hot-bid.exchange
       queue: auction.hot-bid.persist.queue
       routing-key: auction.hot-bid.persist
+      dead-letter-exchange: auction.hot-bid.dlx
+      dead-letter-queue: auction.hot-bid.persist.dlq
+      dead-letter-routing-key: auction.hot-bid.persist.dead
+      max-attempts: 3
+      initial-interval: 1s
+      multiplier: 2.0
+      max-interval: 5s

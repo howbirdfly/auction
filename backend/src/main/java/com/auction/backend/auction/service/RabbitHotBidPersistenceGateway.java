@@ -18,19 +18,23 @@ public class RabbitHotBidPersistenceGateway implements HotBidPersistenceGateway 
     private final AuctionAsyncPersistenceProperties properties;
     private final JsonMapper jsonMapper;
     private final HotBidPersistenceStore hotBidPersistenceStore;
+    private final HotBidPersistenceLogService hotBidPersistenceLogService;
 
     public RabbitHotBidPersistenceGateway(RabbitTemplate rabbitTemplate,
                                           AuctionAsyncPersistenceProperties properties,
                                           JsonMapper jsonMapper,
-                                          HotBidPersistenceStore hotBidPersistenceStore) {
+                                          HotBidPersistenceStore hotBidPersistenceStore,
+                                          HotBidPersistenceLogService hotBidPersistenceLogService) {
         this.rabbitTemplate = rabbitTemplate;
         this.properties = properties;
         this.jsonMapper = jsonMapper;
         this.hotBidPersistenceStore = hotBidPersistenceStore;
+        this.hotBidPersistenceLogService = hotBidPersistenceLogService;
     }
 
     @Override
     public void persist(HotBidPersistenceMessage message) {
+        hotBidPersistenceLogService.recordQueued(message);
         try {
             rabbitTemplate.convertAndSend(
                     properties.getExchange(),
@@ -39,7 +43,9 @@ public class RabbitHotBidPersistenceGateway implements HotBidPersistenceGateway 
             );
         } catch (Exception exception) {
             log.warn("Failed to publish hot bid persistence event {}, falling back to direct MySQL write", message.eventId(), exception);
+            hotBidPersistenceLogService.markFallbackDirect(message, exception);
             hotBidPersistenceStore.persist(message);
+            hotBidPersistenceLogService.markSuccess(message);
         }
     }
 }

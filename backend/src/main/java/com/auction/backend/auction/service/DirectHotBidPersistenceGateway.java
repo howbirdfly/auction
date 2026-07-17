@@ -8,13 +8,23 @@ import org.springframework.stereotype.Service;
 public class DirectHotBidPersistenceGateway implements HotBidPersistenceGateway {
 
     private final HotBidPersistenceStore hotBidPersistenceStore;
+    private final HotBidPersistenceLogService hotBidPersistenceLogService;
 
-    public DirectHotBidPersistenceGateway(HotBidPersistenceStore hotBidPersistenceStore) {
+    public DirectHotBidPersistenceGateway(HotBidPersistenceStore hotBidPersistenceStore,
+                                          HotBidPersistenceLogService hotBidPersistenceLogService) {
         this.hotBidPersistenceStore = hotBidPersistenceStore;
+        this.hotBidPersistenceLogService = hotBidPersistenceLogService;
     }
 
     @Override
     public void persist(HotBidPersistenceMessage message) {
-        hotBidPersistenceStore.persist(message);
+        hotBidPersistenceLogService.markProcessing(message);
+        try {
+            hotBidPersistenceStore.persist(message);
+            hotBidPersistenceLogService.markSuccess(message);
+        } catch (RuntimeException exception) {
+            hotBidPersistenceLogService.markFailed(message, exception);
+            throw exception;
+        }
     }
 }

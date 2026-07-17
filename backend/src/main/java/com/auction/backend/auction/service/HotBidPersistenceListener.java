@@ -11,16 +11,29 @@ public class HotBidPersistenceListener {
 
     private final JsonMapper jsonMapper;
     private final HotBidPersistenceStore hotBidPersistenceStore;
+    private final HotBidPersistenceLogService hotBidPersistenceLogService;
 
     public HotBidPersistenceListener(JsonMapper jsonMapper,
-                                     HotBidPersistenceStore hotBidPersistenceStore) {
+                                     HotBidPersistenceStore hotBidPersistenceStore,
+                                     HotBidPersistenceLogService hotBidPersistenceLogService) {
         this.jsonMapper = jsonMapper;
         this.hotBidPersistenceStore = hotBidPersistenceStore;
+        this.hotBidPersistenceLogService = hotBidPersistenceLogService;
     }
 
-    @RabbitListener(queues = "${auction.persistence.rabbitmq.queue:auction.hot-bid.persist.queue}")
+    @RabbitListener(
+            queues = "${auction.persistence.rabbitmq.queue:auction.hot-bid.persist.queue}",
+            containerFactory = "hotBidRabbitListenerContainerFactory"
+    )
     public void onMessage(String payload) throws Exception {
         HotBidPersistenceMessage message = jsonMapper.readValue(payload, HotBidPersistenceMessage.class);
-        hotBidPersistenceStore.persist(message);
+        hotBidPersistenceLogService.markProcessing(message);
+        try {
+            hotBidPersistenceStore.persist(message);
+            hotBidPersistenceLogService.markSuccess(message);
+        } catch (Exception exception) {
+            hotBidPersistenceLogService.markFailed(message, exception);
+            throw exception;
+        }
     }
 }

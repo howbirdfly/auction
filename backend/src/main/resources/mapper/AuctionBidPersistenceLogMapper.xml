@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.auction.mapper.AuctionBidPersistenceLogMapper">
+
+    <resultMap id="AuctionBidPersistenceLogResultMap" type="AuctionBidPersistenceLog">
+        <id property="eventId" column="event_id"/>
+        <result property="roomId" column="room_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="amount" column="amount"/>
+        <result property="status" column="status"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="lastError" column="last_error"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="persistedAt" column="persisted_at"/>
+    </resultMap>
+
+    <select id="findByEventId" resultMap="AuctionBidPersistenceLogResultMap">
+        select event_id, room_id, user_id, amount, status, attempt_count, last_error, created_at, updated_at, persisted_at
+        from auction_bid_persistence_log
+        where event_id = #{eventId}
+    </select>
+
+    <insert id="insert" parameterType="AuctionBidPersistenceLog">
+        insert into auction_bid_persistence_log (
+            event_id,
+            room_id,
+            user_id,
+            amount,
+            status,
+            attempt_count,
+            last_error,
+            created_at,
+            updated_at,
+            persisted_at
+        ) values (
+            #{eventId},
+            #{roomId},
+            #{userId},
+            #{amount},
+            #{status},
+            #{attemptCount},
+            #{lastError},
+            #{createdAt},
+            #{updatedAt},
+            #{persistedAt}
+        )
+    </insert>
+
+    <update id="updateStatus">
+        update auction_bid_persistence_log
+        set status = #{status},
+            last_error = #{lastError},
+            persisted_at = #{persistedAt},
+            updated_at = #{updatedAt}
+        where event_id = #{eventId}
+    </update>
+
+    <update id="incrementAttemptCount">
+        update auction_bid_persistence_log
+        set attempt_count = attempt_count + 1,
+            updated_at = #{updatedAt}
+        where event_id = #{eventId}
+    </update>
+</mapper>

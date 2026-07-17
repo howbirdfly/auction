@@ -40,6 +40,19 @@ CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
 CREATE UNIQUE INDEX IF NOT EXISTS uk_auction_bid_event_id
     ON auction_bid_record (event_id);
 
+CREATE TABLE IF NOT EXISTS auction_bid_persistence_log (
+    event_id VARCHAR(64) PRIMARY KEY,
+    room_id VARCHAR(32) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    last_error VARCHAR(255),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    persisted_at TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS auction_room_registration (
     room_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
