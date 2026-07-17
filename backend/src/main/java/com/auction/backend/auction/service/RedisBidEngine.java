@@ -4,9 +4,6 @@ import com.auction.backend.auction.cache.AuctionCacheService;
 import com.auction.backend.auction.config.AuctionCacheProperties;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
-import com.auction.backend.auction.mapper.AuctionBidRecordMapper;
-import com.auction.backend.auction.mapper.AuctionRoomMapper;
-import com.auction.backend.auction.model.AuctionBidRecordEntity;
 import com.auction.backend.auction.model.AuctionRoom;
 import com.auction.backend.auction.model.AuctionStatus;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,40 +19,35 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @ConditionalOnProperty(name = "auction.cache.redis.enabled", havingValue = "true")
 public class RedisBidEngine implements BidEngine {
 
-    private static final long LAST_SECOND_EXTENSION_WINDOW = 10;
-    private static final long LAST_SECOND_EXTENSION_SECONDS = 15;
-
     private final AuctionRoomReadService auctionRoomReadService;
-    private final AuctionRoomMapper auctionRoomMapper;
-    private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionCacheService auctionCacheService;
     private final StringRedisTemplate stringRedisTemplate;
     private final AuctionCacheProperties auctionCacheProperties;
     private final HotRoomManager hotRoomManager;
     private final RedisScript<String> hotBidScript;
     private final AuctionQualificationService auctionQualificationService;
+    private final HotBidPersistenceGateway hotBidPersistenceGateway;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
-                          AuctionRoomMapper auctionRoomMapper,
-                          AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionCacheService auctionCacheService,
                           StringRedisTemplate stringRedisTemplate,
                           AuctionCacheProperties auctionCacheProperties,
                           HotRoomManager hotRoomManager,
-                          AuctionQualificationService auctionQualificationService) {
+                          AuctionQualificationService auctionQualificationService,
+                          HotBidPersistenceGateway hotBidPersistenceGateway) {
         this.auctionRoomReadService = auctionRoomReadService;
-        this.auctionRoomMapper = auctionRoomMapper;
-        this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.auctionCacheProperties = auctionCacheProperties;
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
+        this.hotBidPersistenceGateway = hotBidPersistenceGateway;
         DefaultRedisScript<String> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
         script.setResultType(String.class);
@@ -83,20 +75,21 @@ public class RedisBidEngine implements BidEngine {
 
         AuctionRoom room = auctionRoomReadService.findRoom(roomId);
         Instant bidTime = Instant.ofEpochMilli(nowMillis);
+        String eventId = UUID.randomUUID().toString();
         room.setCurrentPrice(request.amount());
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());
         room.setEndsAt(Instant.ofEpochMilli(hotBidResult.endsAtEpochMilli()));
-
-        auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
+        hotBidPersistenceGateway.persist(new HotBidPersistenceMessage(
+                eventId,
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
                 request.amount(),
-                bidTime
+                bidTime,
+                room.getEndsAt(),
+                room.getStatus()
         ));
-
-        auctionRoomMapper.updateAfterBid(room);
 
         return auctionCacheService.getRoom(roomId)
                 .orElseGet(() -> auctionRoomReadService.getRoom(roomId));
@@ -118,8 +111,16 @@ public class RedisBidEngine implements BidEngine {
     private AuctionRoomSnapshot prewarmHotRoomState(String roomId) {
         AuctionRoomSnapshot snapshot = auctionRoomReadService.getRoom(roomId);
         auctionCacheService.cacheRoom(snapshot);
-        auctionCacheService.cacheLeaderboard(roomId, auctionRoomReadService.loadLeaderboard(roomId), snapshot);
-        auctionCacheService.cacheRecentBids(roomId, snapshot.recentBids(), snapshot);
+        auctionCacheService.cacheLeaderboard(
+                roomId,
+                auctionCacheService.getLeaderboard(roomId).orElseGet(() -> auctionRoomReadService.loadLeaderboard(roomId)),
+                snapshot
+        );
+        auctionCacheService.cacheRecentBids(
+                roomId,
+                auctionCacheService.getRecentBids(roomId).orElse(snapshot.recentBids()),
+                snapshot
+        );
         return snapshot;
     }
 
@@ -137,8 +138,6 @@ public class RedisBidEngine implements BidEngine {
                 request.userId(),
                 request.nickname(),
                 request.amount().toPlainString(),
-                Long.toString(LAST_SECOND_EXTENSION_WINDOW),
-                Long.toString(LAST_SECOND_EXTENSION_SECONDS),
                 Long.toString(auctionCacheProperties.getHotRoomBuffer().toSeconds())
         );
     }

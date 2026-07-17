@@ -13,7 +13,6 @@ public class AuctionCacheProperties {
     private Duration lobbyTtl = Duration.ofMinutes(30);
     private Duration roomTtl = Duration.ofMinutes(30);
     private Duration leaderboardTtl = Duration.ofMinutes(30);
-    private Duration hotRoomWindow = Duration.ofHours(1);
     private Duration hotRoomBuffer = Duration.ofMinutes(10);
     private int hotAccessThreshold = 10;
     private Duration bidLockTtl = Duration.ofSeconds(5);
@@ -48,14 +47,6 @@ public class AuctionCacheProperties {
 
     public void setLeaderboardTtl(Duration leaderboardTtl) {
         this.leaderboardTtl = leaderboardTtl;
-    }
-
-    public Duration getHotRoomWindow() {
-        return hotRoomWindow;
-    }
-
-    public void setHotRoomWindow(Duration hotRoomWindow) {
-        this.hotRoomWindow = hotRoomWindow;
     }
 
     public Duration getHotRoomBuffer() {

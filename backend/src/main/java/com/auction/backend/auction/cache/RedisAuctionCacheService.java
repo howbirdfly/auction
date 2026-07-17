@@ -133,7 +133,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     @Override
     public void cacheRoom(AuctionRoomSnapshot room) {
         writeValue(roomKey(room.roomId()), room, resolveRoomTtl(room));
-        if (isHotRoom(room)) {
+        if (shouldCacheAsHotRoom(room)) {
             cacheHotRoomState(room);
         } else {
             deleteKey(hotStateKey(room.roomId()));
@@ -301,23 +301,38 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     }
 
     private Duration resolveRoomTtl(AuctionRoomSnapshot room) {
-        if (isHotRoom(room)) {
+        if (shouldUseHotTtl(room)) {
             return Duration.ofSeconds(Math.max(1, room.secondsRemaining())).plus(cacheProperties.getHotRoomBuffer());
         }
         return cacheProperties.getRoomTtl();
     }
 
     private Duration resolveLeaderboardTtl(AuctionRoomSnapshot room) {
-        if (isHotRoom(room)) {
+        if (shouldUseHotTtl(room)) {
             return Duration.ofSeconds(Math.max(1, room.secondsRemaining())).plus(cacheProperties.getHotRoomBuffer());
         }
         return cacheProperties.getLeaderboardTtl();
     }
 
-    private boolean isHotRoom(AuctionRoomSnapshot room) {
+    private boolean shouldCacheAsHotRoom(AuctionRoomSnapshot room) {
         return room.status() == AuctionStatus.BIDDING
                 && room.secondsRemaining() > 0
-                && room.secondsRemaining() <= cacheProperties.getHotRoomWindow().toSeconds();
+                && isRoomMarkedHot(room.roomId());
+    }
+
+    private boolean shouldUseHotTtl(AuctionRoomSnapshot room) {
+        return room.status() == AuctionStatus.BIDDING
+                && room.secondsRemaining() > 0
+                && isRoomMarkedHot(room.roomId());
+    }
+
+    private boolean isRoomMarkedHot(String roomId) {
+        try {
+            return Boolean.TRUE.equals(stringRedisTemplate.hasKey("auction:room:" + roomId + ":mode"));
+        } catch (Exception exception) {
+            log.warn("Failed to read hot room mode for room {}", roomId, exception);
+            return false;
+        }
     }
 
     private AuctionRoomSnapshot refreshSnapshot(AuctionRoomSnapshot room) {

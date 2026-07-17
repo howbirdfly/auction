@@ -6,6 +6,7 @@ import java.time.Instant;
 public class AuctionBidRecordEntity {
 
     private Long id;
+    private String eventId;
     private String roomId;
     private String userId;
     private String nickname;
@@ -13,6 +14,20 @@ public class AuctionBidRecordEntity {
     private Instant bidTime;
 
     public AuctionBidRecordEntity() {
+    }
+
+    public AuctionBidRecordEntity(String eventId,
+                                  String roomId,
+                                  String userId,
+                                  String nickname,
+                                  BigDecimal amount,
+                                  Instant bidTime) {
+        this.eventId = eventId;
+        this.roomId = roomId;
+        this.userId = userId;
+        this.nickname = nickname;
+        this.amount = amount;
+        this.bidTime = bidTime;
     }
 
     public AuctionBidRecordEntity(String roomId,
@@ -33,6 +48,14 @@ public class AuctionBidRecordEntity {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
     }
 
     public String getRoomId() {

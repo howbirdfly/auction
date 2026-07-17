@@ -1,6 +1,5 @@
 package com.auction.backend.auction.service;
 
-import com.auction.backend.auction.config.AuctionCacheProperties;
 import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
@@ -33,7 +32,6 @@ public class AuctionService {
     private final AuctionRoomReadService auctionRoomReadService;
     private final BidEngineRouter bidEngineRouter;
     private final HotRoomManager hotRoomManager;
-    private final AuctionCacheProperties auctionCacheProperties;
     private final AuctionQualificationService auctionQualificationService;
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
@@ -42,7 +40,6 @@ public class AuctionService {
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
                           HotRoomManager hotRoomManager,
-                          AuctionCacheProperties auctionCacheProperties,
                           AuctionQualificationService auctionQualificationService) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
@@ -50,7 +47,6 @@ public class AuctionService {
         this.auctionRoomReadService = auctionRoomReadService;
         this.bidEngineRouter = bidEngineRouter;
         this.hotRoomManager = hotRoomManager;
-        this.auctionCacheProperties = auctionCacheProperties;
         this.auctionQualificationService = auctionQualificationService;
     }
 
@@ -71,7 +67,10 @@ public class AuctionService {
     public AuctionRoomSnapshot getRoom(String roomId) {
         AuctionRoomSnapshot snapshot = auctionRoomReadService.getRoom(roomId);
 
-        if (shouldPromoteToHot(snapshot) && hotRoomManager.recordAccess(roomId)) {
+        if (snapshot.status() == AuctionStatus.BIDDING
+                && snapshot.secondsRemaining() > 0
+                && !hotRoomManager.isHot(roomId)
+                && hotRoomManager.recordAccess(roomId)) {
             hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
         }
 
@@ -126,7 +125,7 @@ public class AuctionService {
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
         if (hotRoomManager.isHot(roomId)) {
-            hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
+            hotRoomManager.markHot(snapshot, auctionRoomReadService.getLeaderboard(roomId));
         }
 
         broadcastService.broadcastRoom(snapshot);
@@ -172,7 +171,7 @@ public class AuctionService {
             }
 
             AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
-            hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(room.getRoomId()));
+            hotRoomManager.markHot(snapshot, auctionRoomReadService.getLeaderboard(room.getRoomId()));
         });
     }
 
@@ -195,15 +194,6 @@ public class AuctionService {
                 })
                 .max()
                 .orElse(1000L);
-    }
-
-    private boolean shouldPromoteToHot(AuctionRoomSnapshot snapshot) {
-        if (snapshot.status() != AuctionStatus.BIDDING || hotRoomManager.isHot(snapshot.roomId())) {
-            return false;
-        }
-
-        Instant hotWindowStart = snapshot.endsAt().minus(auctionCacheProperties.getHotRoomWindow());
-        return !Instant.now().isBefore(hotWindowStart);
     }
 
     private void seedDemoRooms() {

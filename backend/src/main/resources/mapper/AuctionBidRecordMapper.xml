@@ -6,6 +6,7 @@
 
     <resultMap id="AuctionBidRecordResultMap" type="AuctionBidRecordEntity">
         <id property="id" column="id"/>
+        <result property="eventId" column="event_id"/>
         <result property="roomId" column="room_id"/>
         <result property="userId" column="user_id"/>
         <result property="nickname" column="nickname"/>
@@ -15,12 +16,14 @@
 
     <insert id="insert" parameterType="AuctionBidRecordEntity" useGeneratedKeys="true" keyProperty="id">
         insert into auction_bid_record (
+            event_id,
             room_id,
             user_id,
             nickname,
             amount,
             bid_time
         ) values (
+            #{eventId},
             #{roomId},
             #{userId},
             #{nickname},
@@ -29,8 +32,14 @@
         )
     </insert>
 
+    <select id="findByEventId" resultMap="AuctionBidRecordResultMap">
+        select id, event_id, room_id, user_id, nickname, amount, bid_time
+        from auction_bid_record
+        where event_id = #{eventId}
+    </select>
+
     <select id="findLatestByRoomId" resultMap="AuctionBidRecordResultMap">
-        select id, room_id, user_id, nickname, amount, bid_time
+        select id, event_id, room_id, user_id, nickname, amount, bid_time
         from auction_bid_record
         where room_id = #{roomId}
         order by bid_time desc, id desc

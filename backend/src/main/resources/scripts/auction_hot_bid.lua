@@ -8,9 +8,7 @@ local nowMillis = tonumber(ARGV[2])
 local userId = ARGV[3]
 local nickname = ARGV[4]
 local amount = tonumber(ARGV[5])
-local extensionWindowSeconds = tonumber(ARGV[6])
-local extensionSeconds = tonumber(ARGV[7])
-local hotBufferSeconds = tonumber(ARGV[8])
+local hotBufferSeconds = tonumber(ARGV[6])
 
 if redis.call("EXISTS", stateKey) == 0 then
     return "ERR|ROOM_MISSING"
@@ -40,19 +38,14 @@ if amount < minNextBid then
     return "ERR|BID_TOO_LOW|" .. string.format("%.2f", minNextBid)
 end
 
-local newEndsAtMillis = endsAtMillis
-if endsAtMillis - nowMillis <= extensionWindowSeconds * 1000 then
-    newEndsAtMillis = endsAtMillis + extensionSeconds * 1000
-end
-
 local newBidCount = bidCount + 1
 local newMinNextBid = amount + stepPrice
-local ttlSeconds = math.max(1, math.ceil((newEndsAtMillis - nowMillis) / 1000) + hotBufferSeconds)
+local ttlSeconds = math.max(1, math.ceil((endsAtMillis - nowMillis) / 1000) + hotBufferSeconds)
 
 redis.call("HSET", stateKey,
     "currentPrice", string.format("%.2f", amount),
     "leaderNickname", nickname,
-    "endsAtEpochMilli", tostring(newEndsAtMillis),
+    "endsAtEpochMilli", tostring(endsAtMillis),
     "minNextBid", string.format("%.2f", newMinNextBid),
     "bidCount", tostring(newBidCount)
 )
@@ -73,4 +66,4 @@ redis.call("LPUSH", recentBidKey, recentBidPayload)
 redis.call("LTRIM", recentBidKey, 0, 9)
 redis.call("EXPIRE", recentBidKey, ttlSeconds)
 
-return "OK|" .. tostring(newEndsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid)
+return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid)

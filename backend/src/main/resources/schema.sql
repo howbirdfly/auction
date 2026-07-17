@@ -23,6 +23,7 @@ ALTER TABLE auction_room
 
 CREATE TABLE IF NOT EXISTS auction_bid_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_id VARCHAR(64),
     room_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
     nickname VARCHAR(64) NOT NULL,
@@ -30,8 +31,14 @@ CREATE TABLE IF NOT EXISTS auction_bid_record (
     bid_time TIMESTAMP NOT NULL
 );
 
+ALTER TABLE auction_bid_record
+    ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
+
 CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
     ON auction_bid_record (room_id, bid_time);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_auction_bid_event_id
+    ON auction_bid_record (event_id);
 
 CREATE TABLE IF NOT EXISTS auction_room_registration (
     room_id VARCHAR(32) NOT NULL,

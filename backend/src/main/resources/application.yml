@@ -18,6 +18,11 @@ spring:
       port: 6379
       password:
       timeout: 3s
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
 
 server:
   port: 8080
@@ -41,7 +46,12 @@ auction:
       lobby-ttl: 30m
       room-ttl: 30m
       leaderboard-ttl: 30m
-      hot-room-window: 1h
       hot-room-buffer: 10m
       hot-access-threshold: 10
       bid-lock-ttl: 5s
+  persistence:
+    rabbitmq:
+      enabled: false
+      exchange: auction.hot-bid.exchange
+      queue: auction.hot-bid.persist.queue
+      routing-key: auction.hot-bid.persist

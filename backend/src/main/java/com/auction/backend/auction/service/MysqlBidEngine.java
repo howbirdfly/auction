@@ -20,9 +20,6 @@ import java.time.Instant;
 @Service
 public class MysqlBidEngine implements BidEngine {
 
-    private static final long LAST_SECOND_EXTENSION_WINDOW = 10;
-    private static final long LAST_SECOND_EXTENSION_SECONDS = 15;
-
     private final AuctionRoomReadService auctionRoomReadService;
     private final AuctionRoomMapper auctionRoomMapper;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
@@ -68,11 +65,6 @@ public class MysqlBidEngine implements BidEngine {
                 request.amount(),
                 now
         ));
-
-        long secondsRemaining = Duration.between(now, room.getEndsAt()).toSeconds();
-        if (secondsRemaining <= LAST_SECOND_EXTENSION_WINDOW) {
-            room.setEndsAt(room.getEndsAt().plusSeconds(LAST_SECOND_EXTENSION_SECONDS));
-        }
 
         auctionRoomMapper.updateAfterBid(room);
         AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
