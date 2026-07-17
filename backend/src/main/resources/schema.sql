@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS auction_room (
     status VARCHAR(16) NOT NULL
 );
 
+-- Backfill columns for existing MySQL/H2 tables created before qualification support.
+ALTER TABLE auction_room
+    ADD COLUMN IF NOT EXISTS registration_required BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE auction_room
+    ADD COLUMN IF NOT EXISTS deposit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
+
 CREATE TABLE IF NOT EXISTS auction_bid_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     room_id VARCHAR(32) NOT NULL,
