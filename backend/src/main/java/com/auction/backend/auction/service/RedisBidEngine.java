@@ -38,6 +38,7 @@ public class RedisBidEngine implements BidEngine {
     private final AuctionCacheProperties auctionCacheProperties;
     private final HotRoomManager hotRoomManager;
     private final RedisScript<String> hotBidScript;
+    private final AuctionQualificationService auctionQualificationService;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
@@ -45,7 +46,8 @@ public class RedisBidEngine implements BidEngine {
                           AuctionCacheService auctionCacheService,
                           StringRedisTemplate stringRedisTemplate,
                           AuctionCacheProperties auctionCacheProperties,
-                          HotRoomManager hotRoomManager) {
+                          HotRoomManager hotRoomManager,
+                          AuctionQualificationService auctionQualificationService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
@@ -53,6 +55,7 @@ public class RedisBidEngine implements BidEngine {
         this.stringRedisTemplate = stringRedisTemplate;
         this.auctionCacheProperties = auctionCacheProperties;
         this.hotRoomManager = hotRoomManager;
+        this.auctionQualificationService = auctionQualificationService;
         DefaultRedisScript<String> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
         script.setResultType(String.class);
@@ -65,6 +68,9 @@ public class RedisBidEngine implements BidEngine {
         AuctionRoomSnapshot cachedRoom = auctionCacheService.getRoom(roomId)
                 .orElseGet(() -> prewarmHotRoomState(roomId));
         validateRoomOpen(cachedRoom, Instant.now());
+
+        AuctionRoom qualificationRoom = auctionRoomReadService.findRoom(roomId);
+        auctionQualificationService.assertEligibleToBid(qualificationRoom, request.userId());
 
         long nowMillis = Instant.now().toEpochMilli();
         String result = executeHotBidScript(roomId, request, nowMillis);

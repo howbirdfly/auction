@@ -34,6 +34,7 @@ public class AuctionService {
     private final BidEngineRouter bidEngineRouter;
     private final HotRoomManager hotRoomManager;
     private final AuctionCacheProperties auctionCacheProperties;
+    private final AuctionQualificationService auctionQualificationService;
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
@@ -41,7 +42,8 @@ public class AuctionService {
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
                           HotRoomManager hotRoomManager,
-                          AuctionCacheProperties auctionCacheProperties) {
+                          AuctionCacheProperties auctionCacheProperties,
+                          AuctionQualificationService auctionQualificationService) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.broadcastService = broadcastService;
@@ -49,6 +51,7 @@ public class AuctionService {
         this.bidEngineRouter = bidEngineRouter;
         this.hotRoomManager = hotRoomManager;
         this.auctionCacheProperties = auctionCacheProperties;
+        this.auctionQualificationService = auctionQualificationService;
     }
 
     @PostConstruct
@@ -83,6 +86,7 @@ public class AuctionService {
     @Transactional
     public AuctionRoomSnapshot createRoom(CreateAuctionRequest request) {
         String roomId = "AR-" + roomSequence.incrementAndGet();
+        boolean registrationRequired = auctionQualificationService.resolveRegistrationRequired(request.registrationRequired());
         AuctionRoom room = new AuctionRoom(
                 roomId,
                 request.itemTitle(),
@@ -90,6 +94,8 @@ public class AuctionService {
                 resolveImageUrl(request.imageUrl()),
                 request.startPrice(),
                 request.stepPrice(),
+                registrationRequired,
+                auctionQualificationService.resolveDepositAmount(request.depositAmount(), registrationRequired),
                 Instant.now().plusSeconds(request.durationSeconds()),
                 AuctionStatus.BIDDING
         );
@@ -207,6 +213,8 @@ public class AuctionService {
                 "https://placehold.co/800x600/f7efe2/20242c?text=Sneaker+Blind+Box",
                 199,
                 20,
+                true,
+                99,
                 600
         );
         addSeedRoom(
@@ -215,6 +223,8 @@ public class AuctionService {
                 "https://placehold.co/800x600/eaf3ff/1e293b?text=Collectible+Toys",
                 299,
                 30,
+                true,
+                99,
                 720
         );
         addSeedRoom(
@@ -223,6 +233,8 @@ public class AuctionService {
                 "https://placehold.co/800x600/fff5e8/312e2b?text=Designer+Bag",
                 599,
                 50,
+                true,
+                199,
                 840
         );
         addSeedRoom(
@@ -231,6 +243,8 @@ public class AuctionService {
                 "https://placehold.co/800x600/edf7f6/1f2937?text=Digital+Headphone",
                 399,
                 25,
+                true,
+                99,
                 960
         );
     }
@@ -240,6 +254,8 @@ public class AuctionService {
                              String imageUrl,
                              int startPrice,
                              int stepPrice,
+                             boolean registrationRequired,
+                             int depositAmount,
                              int durationSeconds) {
         String roomId = "AR-" + roomSequence.incrementAndGet();
         auctionRoomMapper.insert(new AuctionRoom(
@@ -249,6 +265,8 @@ public class AuctionService {
                 imageUrl,
                 BigDecimal.valueOf(startPrice),
                 BigDecimal.valueOf(stepPrice),
+                registrationRequired,
+                BigDecimal.valueOf(depositAmount),
                 Instant.now().plusSeconds(durationSeconds),
                 AuctionStatus.BIDDING
         ));

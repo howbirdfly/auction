@@ -14,6 +14,8 @@
         <result property="currentPrice" column="current_price"/>
         <result property="leaderUserId" column="leader_user_id"/>
         <result property="leaderNickname" column="leader_nickname"/>
+        <result property="registrationRequired" column="registration_required"/>
+        <result property="depositAmount" column="deposit_amount"/>
         <result property="endsAt" column="ends_at"/>
         <result property="status" column="status"/>
     </resultMap>
@@ -28,6 +30,8 @@
         current_price,
         leader_user_id,
         leader_nickname,
+        registration_required,
+        deposit_amount,
         ends_at,
         status
     </sql>
@@ -80,6 +84,8 @@
             current_price,
             leader_user_id,
             leader_nickname,
+            registration_required,
+            deposit_amount,
             ends_at,
             status
         ) values (
@@ -92,6 +98,8 @@
             #{currentPrice},
             #{leaderUserId},
             #{leaderNickname},
+            #{registrationRequired},
+            #{depositAmount},
             #{endsAt},
             #{status}
         )

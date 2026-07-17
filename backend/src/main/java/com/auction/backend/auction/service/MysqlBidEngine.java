@@ -27,15 +27,18 @@ public class MysqlBidEngine implements BidEngine {
     private final AuctionRoomMapper auctionRoomMapper;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionCacheService auctionCacheService;
+    private final AuctionQualificationService auctionQualificationService;
 
     public MysqlBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
-                          AuctionCacheService auctionCacheService) {
+                          AuctionCacheService auctionCacheService,
+                          AuctionQualificationService auctionQualificationService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
+        this.auctionQualificationService = auctionQualificationService;
     }
 
     @Override
@@ -43,6 +46,7 @@ public class MysqlBidEngine implements BidEngine {
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoom room = auctionRoomReadService.findRoomForUpdate(roomId);
         validateRoomOpen(room, Instant.now());
+        auctionQualificationService.assertEligibleToBid(room, request.userId());
 
         BigDecimal minNextBid = auctionRoomReadService.calculateMinNextBid(room);
         if (request.amount().compareTo(minNextBid) < 0) {

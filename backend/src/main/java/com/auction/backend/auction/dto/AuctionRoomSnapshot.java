@@ -18,6 +18,8 @@ public record AuctionRoomSnapshot(
         BigDecimal stepPrice,
         BigDecimal minNextBid,
         String leaderNickname,
+        boolean registrationRequired,
+        BigDecimal depositAmount,
         Instant endsAt,
         long secondsRemaining,
         int bidCount,

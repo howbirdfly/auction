@@ -16,6 +16,9 @@ public record CreateAuctionRequest(
         BigDecimal startPrice,
         @DecimalMin(value = "0.01", message = "must be greater than 0")
         BigDecimal stepPrice,
+        Boolean registrationRequired,
+        @DecimalMin(value = "0.00", message = "must be greater than or equal to 0")
+        BigDecimal depositAmount,
         @Min(value = 30, message = "must be at least 30 seconds")
         long durationSeconds
 ) {

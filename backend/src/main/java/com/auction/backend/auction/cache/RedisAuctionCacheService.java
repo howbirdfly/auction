@@ -336,6 +336,8 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 room.stepPrice(),
                 room.minNextBid(),
                 room.leaderNickname(),
+                room.registrationRequired(),
+                room.depositAmount(),
                 room.endsAt(),
                 secondsRemaining,
                 room.bidCount(),
@@ -372,6 +374,8 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             state.put("stepPrice", room.stepPrice().toPlainString());
             state.put("minNextBid", room.minNextBid().toPlainString());
             state.put("leaderNickname", room.leaderNickname() == null ? "" : room.leaderNickname());
+            state.put("registrationRequired", Boolean.toString(room.registrationRequired()));
+            state.put("depositAmount", room.depositAmount().toPlainString());
             state.put("endsAtEpochMilli", Long.toString(room.endsAt().toEpochMilli()));
             state.put("bidCount", Integer.toString(room.bidCount()));
             stringRedisTemplate.opsForHash().putAll(hotStateKey(room.roomId()), state);
@@ -403,6 +407,8 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                     new BigDecimal(readStateValue(state, "stepPrice")),
                     new BigDecimal(readStateValue(state, "minNextBid")),
                     emptyToNull(readStateValue(state, "leaderNickname")),
+                    Boolean.parseBoolean(readStateOrDefault(state, "registrationRequired", "false")),
+                    new BigDecimal(readStateOrDefault(state, "depositAmount", "0")),
                     endsAt,
                     status == AuctionStatus.CLOSED ? 0 : Math.max(0, Duration.between(Instant.now(), endsAt).toSeconds()),
                     Integer.parseInt(readStateValue(state, "bidCount")),
@@ -435,6 +441,11 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     private String readStateValue(Map<Object, Object> state, String field) {
         Object value = state.get(field);
         return value == null ? "" : value.toString();
+    }
+
+    private String readStateOrDefault(Map<Object, Object> state, String field, String defaultValue) {
+        String value = readStateValue(state, field);
+        return value.isBlank() ? defaultValue : value;
     }
 
     private String emptyToNull(String value) {

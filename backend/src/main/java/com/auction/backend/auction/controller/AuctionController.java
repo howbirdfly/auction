@@ -1,10 +1,14 @@
 package com.auction.backend.auction.controller;
 
 import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
+import com.auction.backend.auction.dto.AuctionQualificationSnapshot;
+import com.auction.backend.auction.dto.AuctionRegistrationRequest;
+import com.auction.backend.auction.dto.AuctionRegistrationSnapshot;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
 import com.auction.backend.auction.dto.CreateAuctionRequest;
 import com.auction.backend.auction.service.AuctionService;
+import com.auction.backend.auction.service.AuctionQualificationService;
 import com.auction.backend.common.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,9 +26,12 @@ import java.util.List;
 public class AuctionController {
 
     private final AuctionService auctionService;
+    private final AuctionQualificationService auctionQualificationService;
 
-    public AuctionController(AuctionService auctionService) {
+    public AuctionController(AuctionService auctionService,
+                             AuctionQualificationService auctionQualificationService) {
         this.auctionService = auctionService;
+        this.auctionQualificationService = auctionQualificationService;
     }
 
     @GetMapping
@@ -40,6 +47,18 @@ public class AuctionController {
     @GetMapping("/{roomId}/leaderboard")
     public ApiResponse<List<AuctionLeaderboardEntry>> getLeaderboard(@PathVariable String roomId) {
         return ApiResponse.success(auctionService.getLeaderboard(roomId));
+    }
+
+    @GetMapping("/{roomId}/qualifications/{userId}")
+    public ApiResponse<AuctionQualificationSnapshot> getQualification(@PathVariable String roomId,
+                                                                      @PathVariable String userId) {
+        return ApiResponse.success(auctionQualificationService.getQualification(roomId, userId));
+    }
+
+    @PostMapping("/{roomId}/registrations")
+    public ApiResponse<AuctionRegistrationSnapshot> registerForAuction(@PathVariable String roomId,
+                                                                       @Valid @RequestBody AuctionRegistrationRequest request) {
+        return ApiResponse.success("auction registration created", auctionQualificationService.register(roomId, request));
     }
 
     @PostMapping

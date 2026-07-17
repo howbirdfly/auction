@@ -14,6 +14,8 @@ public class AuctionRoom {
     private BigDecimal currentPrice;
     private String leaderUserId;
     private String leaderNickname;
+    private boolean registrationRequired;
+    private BigDecimal depositAmount;
     private Instant endsAt;
     private AuctionStatus status;
 
@@ -26,6 +28,8 @@ public class AuctionRoom {
                        String imageUrl,
                        BigDecimal startPrice,
                        BigDecimal stepPrice,
+                       boolean registrationRequired,
+                       BigDecimal depositAmount,
                        Instant endsAt,
                        AuctionStatus status) {
         this.roomId = roomId;
@@ -35,6 +39,8 @@ public class AuctionRoom {
         this.startPrice = startPrice;
         this.stepPrice = stepPrice;
         this.currentPrice = startPrice;
+        this.registrationRequired = registrationRequired;
+        this.depositAmount = depositAmount;
         this.endsAt = endsAt;
         this.status = status;
     }
@@ -109,6 +115,22 @@ public class AuctionRoom {
 
     public void setLeaderNickname(String leaderNickname) {
         this.leaderNickname = leaderNickname;
+    }
+
+    public boolean isRegistrationRequired() {
+        return registrationRequired;
+    }
+
+    public void setRegistrationRequired(boolean registrationRequired) {
+        this.registrationRequired = registrationRequired;
+    }
+
+    public BigDecimal getDepositAmount() {
+        return depositAmount;
+    }
+
+    public void setDepositAmount(BigDecimal depositAmount) {
+        this.depositAmount = depositAmount;
     }
 
     public Instant getEndsAt() {

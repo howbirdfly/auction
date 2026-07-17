@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS auction_room (
     current_price DECIMAL(12, 2) NOT NULL,
     leader_user_id VARCHAR(64),
     leader_nickname VARCHAR(64),
+    registration_required BOOLEAN NOT NULL DEFAULT FALSE,
+    deposit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     ends_at TIMESTAMP NOT NULL,
     status VARCHAR(16) NOT NULL
 );
@@ -23,6 +25,17 @@ CREATE TABLE IF NOT EXISTS auction_bid_record (
 
 CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
     ON auction_bid_record (room_id, bid_time);
+
+CREATE TABLE IF NOT EXISTS auction_room_registration (
+    room_id VARCHAR(32) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    nickname VARCHAR(64) NOT NULL,
+    deposit_amount DECIMAL(12, 2) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (room_id, user_id)
+);
 
 CREATE TABLE IF NOT EXISTS user_account (
     user_id VARCHAR(32) PRIMARY KEY,

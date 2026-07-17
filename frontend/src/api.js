@@ -28,6 +28,17 @@ export function fetchLeaderboard(roomId) {
   return request(`/auctions/${roomId}/leaderboard`);
 }
 
+export function fetchQualification(roomId, userId) {
+  return request(`/auctions/${roomId}/qualifications/${userId}`);
+}
+
+export function registerForAuction(roomId, form) {
+  return request(`/auctions/${roomId}/registrations`, {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
 export function createRoom(form) {
   return request("/auctions", {
     method: "POST",
