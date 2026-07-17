@@ -80,12 +80,14 @@ public class RedisBidEngine implements BidEngine {
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());
         room.setEndsAt(Instant.ofEpochMilli(hotBidResult.endsAtEpochMilli()));
+        room.setVersion(hotBidResult.roomVersion());
         hotBidPersistenceGateway.persist(new HotBidPersistenceMessage(
                 eventId,
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
                 request.amount(),
+                hotBidResult.roomVersion(),
                 bidTime,
                 room.getEndsAt(),
                 room.getStatus()
@@ -148,11 +150,12 @@ public class RedisBidEngine implements BidEngine {
         }
 
         String[] parts = result.split("\\|");
-        if ("OK".equals(parts[0]) && parts.length >= 4) {
+        if ("OK".equals(parts[0]) && parts.length >= 5) {
             return new HotBidResult(
                     Long.parseLong(parts[1]),
                     Integer.parseInt(parts[2]),
-                    new BigDecimal(parts[3])
+                    new BigDecimal(parts[3]),
+                    Long.parseLong(parts[4])
             );
         }
 
@@ -186,7 +189,8 @@ public class RedisBidEngine implements BidEngine {
     private record HotBidResult(
             long endsAtEpochMilli,
             int bidCount,
-            BigDecimal minNextBid
+            BigDecimal minNextBid,
+            long roomVersion
     ) {
     }
 }

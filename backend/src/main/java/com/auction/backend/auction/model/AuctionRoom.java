@@ -18,6 +18,7 @@ public class AuctionRoom {
     private BigDecimal depositAmount;
     private Instant endsAt;
     private AuctionStatus status;
+    private long version;
 
     public AuctionRoom() {
     }
@@ -43,6 +44,7 @@ public class AuctionRoom {
         this.depositAmount = depositAmount;
         this.endsAt = endsAt;
         this.status = status;
+        this.version = 0L;
     }
 
     public String getRoomId() {
@@ -147,6 +149,14 @@ public class AuctionRoom {
 
     public void setStatus(AuctionStatus status) {
         this.status = status;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public void setVersion(long version) {
+        this.version = version;
     }
 
     public boolean hasLeader() {

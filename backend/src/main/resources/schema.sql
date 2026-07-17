@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS auction_room (
     registration_required BOOLEAN NOT NULL DEFAULT FALSE,
     deposit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     ends_at TIMESTAMP NOT NULL,
-    status VARCHAR(16) NOT NULL
+    status VARCHAR(16) NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
 );
 
 -- Backfill columns for existing MySQL/H2 tables created before qualification support.
@@ -21,6 +22,9 @@ ALTER TABLE auction_room
 ALTER TABLE auction_room
     ADD COLUMN IF NOT EXISTS deposit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
 
+ALTER TABLE auction_room
+    ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS auction_bid_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     event_id VARCHAR(64),
@@ -28,11 +32,15 @@ CREATE TABLE IF NOT EXISTS auction_bid_record (
     user_id VARCHAR(64) NOT NULL,
     nickname VARCHAR(64) NOT NULL,
     amount DECIMAL(12, 2) NOT NULL,
+    bid_version BIGINT NOT NULL DEFAULT 0,
     bid_time TIMESTAMP NOT NULL
 );
 
 ALTER TABLE auction_bid_record
     ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
+
+ALTER TABLE auction_bid_record
+    ADD COLUMN IF NOT EXISTS bid_version BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
     ON auction_bid_record (room_id, bid_time);

@@ -54,15 +54,18 @@ public class MysqlBidEngine implements BidEngine {
         }
 
         Instant now = Instant.now();
+        long nextVersion = room.getVersion() + 1;
         room.setCurrentPrice(request.amount());
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());
+        room.setVersion(nextVersion);
 
         auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
                 request.amount(),
+                nextVersion,
                 now
         ));
 

@@ -28,6 +28,7 @@ local startPrice = tonumber(redis.call("HGET", stateKey, "startPrice"))
 local currentPrice = tonumber(redis.call("HGET", stateKey, "currentPrice"))
 local stepPrice = tonumber(redis.call("HGET", stateKey, "stepPrice"))
 local bidCount = tonumber(redis.call("HGET", stateKey, "bidCount")) or 0
+local version = tonumber(redis.call("HGET", stateKey, "version")) or 0
 
 local minNextBid = startPrice
 if bidCount > 0 then
@@ -40,6 +41,7 @@ end
 
 local newBidCount = bidCount + 1
 local newMinNextBid = amount + stepPrice
+local newVersion = version + 1
 local ttlSeconds = math.max(1, math.ceil((endsAtMillis - nowMillis) / 1000) + hotBufferSeconds)
 
 redis.call("HSET", stateKey,
@@ -47,7 +49,8 @@ redis.call("HSET", stateKey,
     "leaderNickname", nickname,
     "endsAtEpochMilli", tostring(endsAtMillis),
     "minNextBid", string.format("%.2f", newMinNextBid),
-    "bidCount", tostring(newBidCount)
+    "bidCount", tostring(newBidCount),
+    "version", tostring(newVersion)
 )
 redis.call("EXPIRE", stateKey, ttlSeconds)
 
@@ -60,10 +63,11 @@ local recentBidPayload = cjson.encode({
     userId = userId,
     nickname = nickname,
     amount = string.format("%.2f", amount),
+    version = newVersion,
     bidTimeEpochMilli = nowMillis
 })
 redis.call("LPUSH", recentBidKey, recentBidPayload)
 redis.call("LTRIM", recentBidKey, 0, 9)
 redis.call("EXPIRE", recentBidKey, ttlSeconds)
 
-return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid)
+return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid) .. "|" .. tostring(newVersion)

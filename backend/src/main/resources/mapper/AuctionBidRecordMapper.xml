@@ -11,6 +11,7 @@
         <result property="userId" column="user_id"/>
         <result property="nickname" column="nickname"/>
         <result property="amount" column="amount"/>
+        <result property="bidVersion" column="bid_version"/>
         <result property="bidTime" column="bid_time"/>
     </resultMap>
 
@@ -21,6 +22,7 @@
             user_id,
             nickname,
             amount,
+            bid_version,
             bid_time
         ) values (
             #{eventId},
@@ -28,21 +30,22 @@
             #{userId},
             #{nickname},
             #{amount},
+            #{bidVersion},
             #{bidTime}
         )
     </insert>
 
     <select id="findByEventId" resultMap="AuctionBidRecordResultMap">
-        select id, event_id, room_id, user_id, nickname, amount, bid_time
+        select id, event_id, room_id, user_id, nickname, amount, bid_version, bid_time
         from auction_bid_record
         where event_id = #{eventId}
     </select>
 
     <select id="findLatestByRoomId" resultMap="AuctionBidRecordResultMap">
-        select id, event_id, room_id, user_id, nickname, amount, bid_time
+        select id, event_id, room_id, user_id, nickname, amount, bid_version, bid_time
         from auction_bid_record
         where room_id = #{roomId}
-        order by bid_time desc, id desc
+        order by bid_version desc, id desc
         limit #{limit}
     </select>
 

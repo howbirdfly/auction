@@ -11,6 +11,7 @@ public class AuctionBidRecordEntity {
     private String userId;
     private String nickname;
     private BigDecimal amount;
+    private Long bidVersion;
     private Instant bidTime;
 
     public AuctionBidRecordEntity() {
@@ -21,12 +22,14 @@ public class AuctionBidRecordEntity {
                                   String userId,
                                   String nickname,
                                   BigDecimal amount,
+                                  Long bidVersion,
                                   Instant bidTime) {
         this.eventId = eventId;
         this.roomId = roomId;
         this.userId = userId;
         this.nickname = nickname;
         this.amount = amount;
+        this.bidVersion = bidVersion;
         this.bidTime = bidTime;
     }
 
@@ -34,11 +37,13 @@ public class AuctionBidRecordEntity {
                                   String userId,
                                   String nickname,
                                   BigDecimal amount,
+                                  Long bidVersion,
                                   Instant bidTime) {
         this.roomId = roomId;
         this.userId = userId;
         this.nickname = nickname;
         this.amount = amount;
+        this.bidVersion = bidVersion;
         this.bidTime = bidTime;
     }
 
@@ -88,6 +93,14 @@ public class AuctionBidRecordEntity {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public Long getBidVersion() {
+        return bidVersion;
+    }
+
+    public void setBidVersion(Long bidVersion) {
+        this.bidVersion = bidVersion;
     }
 
     public Instant getBidTime() {

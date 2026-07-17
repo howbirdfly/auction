@@ -207,6 +207,47 @@ function sortRooms(rooms) {
   return [...rooms].sort((left, right) => getRoomSortScore(right) - getRoomSortScore(left));
 }
 
+function getRoomVersion(room) {
+  return Number(room?.version || 0);
+}
+
+function shouldApplyRoomUpdate(currentRoom, incomingRoom) {
+  if (!currentRoom) {
+    return true;
+  }
+
+  return getRoomVersion(incomingRoom) >= getRoomVersion(currentRoom);
+}
+
+function mergeRoomsByVersion(currentRooms, incomingRooms) {
+  return sortRooms(
+    incomingRooms.map((incomingRoom) => {
+      const currentRoom = currentRooms.find((room) => room.roomId === incomingRoom.roomId);
+      return shouldApplyRoomUpdate(currentRoom, incomingRoom) ? incomingRoom : currentRoom;
+    }),
+  );
+}
+
+function upsertRoom(room) {
+  const currentRoom = state.rooms.find((item) => item.roomId === room.roomId);
+  const nextRoom = shouldApplyRoomUpdate(currentRoom, room) ? room : currentRoom;
+
+  if (!currentRoom) {
+    state.rooms = sortRooms([...state.rooms, nextRoom]);
+    return;
+  }
+
+  state.rooms = sortRooms(state.rooms.map((item) => (item.roomId === nextRoom.roomId ? nextRoom : item)));
+}
+
+function applySelectedRoom(room) {
+  if (!shouldApplyRoomUpdate(state.selectedRoom, room)) {
+    return;
+  }
+
+  state.selectedRoom = room;
+}
+
 function renderHomeHeader() {
   return `
     <section class="home-top">
@@ -1119,7 +1160,7 @@ function updateCountdownDisplay() {
 }
 
 async function loadRooms() {
-  state.rooms = sortRooms(await fetchRooms());
+  state.rooms = mergeRoomsByVersion(state.rooms, await fetchRooms());
 
   if (state.selectedRoomId) {
     const stillExists = state.rooms.some((room) => room.roomId === state.selectedRoomId);
@@ -1144,7 +1185,8 @@ async function loadSelectedRoom(roomId) {
     fetchLeaderboard(roomId),
     currentUser ? fetchQualification(roomId, currentUser.account) : Promise.resolve(null),
   ]);
-  state.selectedRoom = room;
+  applySelectedRoom(room);
+  upsertRoom(room);
   state.selectedRoomLeaderboard = leaderboard;
   state.selectedRoomQualification = qualification;
 }
@@ -1371,9 +1413,9 @@ async function handleBid(event) {
 
   try {
     const room = await createBid(state.selectedRoomId, payload);
-    state.selectedRoom = room;
+    applySelectedRoom(room);
     state.selectedRoomLeaderboard = await fetchLeaderboard(state.selectedRoomId);
-    state.rooms = state.rooms.map((item) => (item.roomId === room.roomId ? room : item));
+    upsertRoom(room);
     setFeedback(`出价成功，当前领先者：${room.leaderNickname}`);
     renderPage();
   } catch (error) {
@@ -1448,12 +1490,13 @@ bindPlaceholderButtons();
 
 state.socket = createAuctionSocket({
   onLobbyMessage(rooms) {
-    state.rooms = rooms;
+    state.rooms = mergeRoomsByVersion(state.rooms, rooms);
     renderPage();
   },
   onRoomMessage(room) {
     if (room.roomId === state.selectedRoomId) {
-      state.selectedRoom = room;
+      applySelectedRoom(room);
+      upsertRoom(room);
       renderPage();
     }
   },

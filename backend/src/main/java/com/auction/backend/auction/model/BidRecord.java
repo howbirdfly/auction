@@ -7,6 +7,7 @@ public record BidRecord(
         String userId,
         String nickname,
         BigDecimal amount,
+        long version,
         Instant bidTime
 ) {
 }

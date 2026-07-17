@@ -111,6 +111,7 @@ public class AuctionRoomReadService {
                 room.getLeaderNickname(),
                 room.isRegistrationRequired(),
                 room.getDepositAmount(),
+                room.getVersion(),
                 room.getEndsAt(),
                 secondsRemaining,
                 Math.toIntExact(auctionBidRecordMapper.countByRoomId(room.getRoomId())),
@@ -159,8 +160,19 @@ public class AuctionRoomReadService {
     }
 
     public void closeRoom(AuctionRoom room) {
+        auctionCacheService.getRoom(room.getRoomId()).ifPresent(snapshot -> {
+            if (snapshot.version() > room.getVersion()) {
+                room.setCurrentPrice(snapshot.currentPrice());
+                room.setLeaderNickname(snapshot.leaderNickname());
+                room.setVersion(snapshot.version());
+                if (!snapshot.recentBids().isEmpty()) {
+                    room.setLeaderUserId(snapshot.recentBids().get(0).userId());
+                }
+            }
+        });
         room.setStatus(AuctionStatus.CLOSED);
-        auctionRoomMapper.updateStatus(room.getRoomId(), AuctionStatus.CLOSED);
+        room.setVersion(room.getVersion() + 1);
+        auctionRoomMapper.updateAfterBid(room);
         AuctionRoomSnapshot snapshot = toSnapshot(room, true);
         auctionCacheService.cacheRoom(snapshot);
         auctionCacheService.cacheRecentBids(room.getRoomId(), snapshot.recentBids(), snapshot);
@@ -179,6 +191,7 @@ public class AuctionRoomReadService {
                 entity.getUserId(),
                 entity.getNickname(),
                 entity.getAmount(),
+                entity.getBidVersion() == null ? 0L : entity.getBidVersion(),
                 entity.getBidTime()
         );
     }
@@ -197,6 +210,7 @@ public class AuctionRoomReadService {
                 snapshot.leaderNickname(),
                 snapshot.registrationRequired(),
                 snapshot.depositAmount(),
+                snapshot.version(),
                 snapshot.endsAt(),
                 snapshot.secondsRemaining(),
                 snapshot.bidCount(),

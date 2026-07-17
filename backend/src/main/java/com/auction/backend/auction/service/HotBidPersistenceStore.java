@@ -4,8 +4,11 @@ import com.auction.backend.auction.mapper.AuctionBidRecordMapper;
 import com.auction.backend.auction.mapper.AuctionRoomMapper;
 import com.auction.backend.auction.model.AuctionBidRecordEntity;
 import com.auction.backend.auction.model.AuctionRoom;
+import com.auction.backend.auction.model.AuctionStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 public class HotBidPersistenceStore {
@@ -34,6 +37,7 @@ public class HotBidPersistenceStore {
                 message.userId(),
                 message.nickname(),
                 message.amount(),
+                message.roomVersion(),
                 message.bidTime()
         ));
 
@@ -42,6 +46,8 @@ public class HotBidPersistenceStore {
         room.setLeaderUserId(message.userId());
         room.setLeaderNickname(message.nickname());
         room.setEndsAt(message.endsAt());
+        room.setStatus(message.endsAt().isAfter(Instant.now()) ? message.roomStatus() : AuctionStatus.CLOSED);
+        room.setVersion(message.roomVersion());
         auctionRoomMapper.updateAfterBid(room);
     }
 }

@@ -353,6 +353,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 room.leaderNickname(),
                 room.registrationRequired(),
                 room.depositAmount(),
+                room.version(),
                 room.endsAt(),
                 secondsRemaining,
                 room.bidCount(),
@@ -366,6 +367,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                     bidRecord.userId(),
                     bidRecord.nickname(),
                     bidRecord.amount().toPlainString(),
+                    bidRecord.version(),
                     bidRecord.bidTime().toEpochMilli()
             ));
         } catch (Exception exception) {
@@ -391,6 +393,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             state.put("leaderNickname", room.leaderNickname() == null ? "" : room.leaderNickname());
             state.put("registrationRequired", Boolean.toString(room.registrationRequired()));
             state.put("depositAmount", room.depositAmount().toPlainString());
+            state.put("version", Long.toString(room.version()));
             state.put("endsAtEpochMilli", Long.toString(room.endsAt().toEpochMilli()));
             state.put("bidCount", Integer.toString(room.bidCount()));
             stringRedisTemplate.opsForHash().putAll(hotStateKey(room.roomId()), state);
@@ -424,6 +427,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                     emptyToNull(readStateValue(state, "leaderNickname")),
                     Boolean.parseBoolean(readStateOrDefault(state, "registrationRequired", "false")),
                     new BigDecimal(readStateOrDefault(state, "depositAmount", "0")),
+                    Long.parseLong(readStateOrDefault(state, "version", "0")),
                     endsAt,
                     status == AuctionStatus.CLOSED ? 0 : Math.max(0, Duration.between(Instant.now(), endsAt).toSeconds()),
                     Integer.parseInt(readStateValue(state, "bidCount")),
@@ -447,6 +451,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                     payload.userId(),
                     payload.nickname(),
                     new BigDecimal(payload.amount()),
+                    payload.version(),
                     Instant.ofEpochMilli(payload.bidTimeEpochMilli())
             ));
         }
@@ -471,6 +476,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             String userId,
             String nickname,
             String amount,
+            long version,
             long bidTimeEpochMilli
     ) {
     }
