@@ -33,6 +33,7 @@ public class AuctionService {
     private final BidEngineRouter bidEngineRouter;
     private final HotRoomManager hotRoomManager;
     private final AuctionQualificationService auctionQualificationService;
+    private final AuctionWalletService auctionWalletService;
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
@@ -40,7 +41,8 @@ public class AuctionService {
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
                           HotRoomManager hotRoomManager,
-                          AuctionQualificationService auctionQualificationService) {
+                          AuctionQualificationService auctionQualificationService,
+                          AuctionWalletService auctionWalletService) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.broadcastService = broadcastService;
@@ -48,6 +50,7 @@ public class AuctionService {
         this.bidEngineRouter = bidEngineRouter;
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
+        this.auctionWalletService = auctionWalletService;
     }
 
     @PostConstruct
@@ -150,6 +153,7 @@ public class AuctionService {
 
         expiredRooms.forEach(room -> {
             auctionRoomReadService.closeRoom(room);
+            auctionWalletService.settleRoom(room.getRoomId(), room.getLeaderUserId(), room.getCurrentPrice());
             hotRoomManager.clear(room.getRoomId());
         });
 

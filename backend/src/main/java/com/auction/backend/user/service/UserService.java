@@ -4,6 +4,7 @@ import com.auction.backend.user.dto.CreateUserRequest;
 import com.auction.backend.user.dto.UpdateUserRequest;
 import com.auction.backend.user.dto.UserLoginRequest;
 import com.auction.backend.user.dto.UserProfileSnapshot;
+import com.auction.backend.user.dto.UserRechargeRequest;
 import com.auction.backend.user.mapper.UserAccountMapper;
 import com.auction.backend.user.model.UserAccount;
 import jakarta.annotation.PostConstruct;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,6 +25,7 @@ public class UserService {
 
     private static final String DEFAULT_AVATAR_URL = "https://placehold.co/256x256/f3f4f6/111827?text=User";
     private static final int PASSWORD_STRENGTH = 10;
+    private static final BigDecimal DEMO_INITIAL_BALANCE = BigDecimal.valueOf(2000);
 
     private final AtomicLong userSequence = new AtomicLong(10000);
     private final UserAccountMapper userAccountMapper;
@@ -64,6 +67,8 @@ public class UserService {
                 request.nickname().trim(),
                 resolveAvatarUrl(request.avatarUrl()),
                 resolveBio(request.bio()),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 now,
                 now
         );
@@ -101,6 +106,15 @@ public class UserService {
         return toSnapshot(userAccount);
     }
 
+    @Transactional
+    public UserProfileSnapshot recharge(String userId, UserRechargeRequest request) {
+        UserAccount userAccount = findUser(userId);
+        userAccount.setBalance(userAccount.getBalance().add(request.amount()));
+        userAccount.setUpdatedAt(Instant.now());
+        userAccountMapper.updateWallet(userAccount);
+        return toSnapshot(userAccount);
+    }
+
     private UserAccount findUser(String userId) {
         UserAccount userAccount = userAccountMapper.findById(userId);
         if (userAccount == null) {
@@ -122,6 +136,8 @@ public class UserService {
                 userAccount.getNickname(),
                 userAccount.getAvatarUrl(),
                 userAccount.getBio(),
+                userAccount.getBalance(),
+                userAccount.getFrozenAmount(),
                 userAccount.getCreatedAt(),
                 userAccount.getUpdatedAt()
         );
@@ -221,6 +237,8 @@ public class UserService {
                 nickname,
                 avatarUrl,
                 bio,
+                DEMO_INITIAL_BALANCE,
+                BigDecimal.ZERO,
                 now,
                 now
         ));

@@ -79,6 +79,14 @@ CREATE TABLE IF NOT EXISTS user_account (
     nickname VARCHAR(32) NOT NULL,
     avatar_url VARCHAR(512),
     bio VARCHAR(255),
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
+
+ALTER TABLE user_account
+    ADD COLUMN IF NOT EXISTS balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
+
+ALTER TABLE user_account
+    ADD COLUMN IF NOT EXISTS frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00;

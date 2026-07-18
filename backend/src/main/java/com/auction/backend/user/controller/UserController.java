@@ -5,6 +5,7 @@ import com.auction.backend.user.dto.CreateUserRequest;
 import com.auction.backend.user.dto.UpdateUserRequest;
 import com.auction.backend.user.dto.UserLoginRequest;
 import com.auction.backend.user.dto.UserProfileSnapshot;
+import com.auction.backend.user.dto.UserRechargeRequest;
 import com.auction.backend.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,5 +52,11 @@ public class UserController {
     public ApiResponse<UserProfileSnapshot> updateUser(@PathVariable String userId,
                                                        @Valid @RequestBody UpdateUserRequest request) {
         return ApiResponse.success("user updated", userService.updateUser(userId, request));
+    }
+
+    @PostMapping("/{userId}/recharge")
+    public ApiResponse<UserProfileSnapshot> recharge(@PathVariable String userId,
+                                                     @Valid @RequestBody UserRechargeRequest request) {
+        return ApiResponse.success("balance recharged", userService.recharge(userId, request));
     }
 }

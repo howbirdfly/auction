@@ -11,6 +11,8 @@
         <result property="nickname" column="nickname"/>
         <result property="avatarUrl" column="avatar_url"/>
         <result property="bio" column="bio"/>
+        <result property="balance" column="balance"/>
+        <result property="frozenAmount" column="frozen_amount"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
@@ -22,6 +24,8 @@
         nickname,
         avatar_url,
         bio,
+        balance,
+        frozen_amount,
         created_at,
         updated_at
     </sql>
@@ -49,6 +53,13 @@
         where account = #{account}
     </select>
 
+    <select id="findByAccountForUpdate" resultMap="UserAccountResultMap">
+        select <include refid="UserColumns"/>
+        from user_account
+        where account = #{account}
+        for update
+    </select>
+
     <select id="findAllUserIds" resultType="string">
         select user_id
         from user_account
@@ -62,6 +73,8 @@
             nickname,
             avatar_url,
             bio,
+            balance,
+            frozen_amount,
             created_at,
             updated_at
         ) values (
@@ -71,6 +84,8 @@
             #{nickname},
             #{avatarUrl},
             #{bio},
+            #{balance},
+            #{frozenAmount},
             #{createdAt},
             #{updatedAt}
         )
@@ -88,6 +103,14 @@
     <update id="updatePassword" parameterType="com.auction.backend.user.model.UserAccount">
         update user_account
         set password = #{password},
+            updated_at = #{updatedAt}
+        where user_id = #{userId}
+    </update>
+
+    <update id="updateWallet" parameterType="com.auction.backend.user.model.UserAccount">
+        update user_account
+        set balance = #{balance},
+            frozen_amount = #{frozenAmount},
             updated_at = #{updatedAt}
         where user_id = #{userId}
     </update>

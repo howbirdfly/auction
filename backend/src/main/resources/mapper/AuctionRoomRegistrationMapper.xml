@@ -27,6 +27,19 @@
           and user_id = #{userId}
     </select>
 
+    <select id="findAllByRoomId" resultMap="AuctionRoomRegistrationResultMap">
+        select room_id,
+               user_id,
+               nickname,
+               deposit_amount,
+               status,
+               created_at,
+               updated_at
+        from auction_room_registration
+        where room_id = #{roomId}
+        order by created_at asc
+    </select>
+
     <insert id="insert" parameterType="AuctionRoomRegistration">
         insert into auction_room_registration (
             room_id,

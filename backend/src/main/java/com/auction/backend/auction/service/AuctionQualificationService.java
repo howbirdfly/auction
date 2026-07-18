@@ -23,11 +23,14 @@ public class AuctionQualificationService {
 
     private final AuctionRoomReadService auctionRoomReadService;
     private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
+    private final AuctionWalletService auctionWalletService;
 
     public AuctionQualificationService(AuctionRoomReadService auctionRoomReadService,
-                                       AuctionRoomRegistrationMapper auctionRoomRegistrationMapper) {
+                                       AuctionRoomRegistrationMapper auctionRoomRegistrationMapper,
+                                       AuctionWalletService auctionWalletService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
+        this.auctionWalletService = auctionWalletService;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +55,7 @@ public class AuctionQualificationService {
         AuctionRoomRegistration existing = findRegistration(roomId, request.userId());
 
         if (existing == null) {
+            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount);
             AuctionRoomRegistration registration = new AuctionRoomRegistration(
                     roomId,
                     request.userId().trim(),
@@ -63,6 +67,18 @@ public class AuctionQualificationService {
             );
             auctionRoomRegistrationMapper.insert(registration);
             return toSnapshot(registration);
+        }
+
+        BigDecimal previousDepositAmount = existing.getStatus() == AuctionRegistrationStatus.LOCKED
+                ? existing.getDepositAmount()
+                : BigDecimal.ZERO;
+        BigDecimal depositDelta = depositAmount.subtract(previousDepositAmount);
+        if (existing.getStatus() != AuctionRegistrationStatus.LOCKED) {
+            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount);
+        } else if (depositDelta.compareTo(BigDecimal.ZERO) > 0) {
+            auctionWalletService.lockDeposit(request.userId().trim(), depositDelta);
+        } else if (depositDelta.compareTo(BigDecimal.ZERO) < 0) {
+            auctionWalletService.releaseDeposit(request.userId().trim(), depositDelta.abs());
         }
 
         existing.setNickname(request.nickname().trim());

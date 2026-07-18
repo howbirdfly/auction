@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS user_account (
     nickname VARCHAR(32) NOT NULL,
     avatar_url VARCHAR(512) NULL,
     bio VARCHAR(255) NULL,
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );

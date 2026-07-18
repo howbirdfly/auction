@@ -25,17 +25,20 @@ public class MysqlBidEngine implements BidEngine {
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionCacheService auctionCacheService;
     private final AuctionQualificationService auctionQualificationService;
+    private final AuctionWalletService auctionWalletService;
 
     public MysqlBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionCacheService auctionCacheService,
-                          AuctionQualificationService auctionQualificationService) {
+                          AuctionQualificationService auctionQualificationService,
+                          AuctionWalletService auctionWalletService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
         this.auctionQualificationService = auctionQualificationService;
+        this.auctionWalletService = auctionWalletService;
     }
 
     @Override
@@ -55,6 +58,9 @@ public class MysqlBidEngine implements BidEngine {
 
         Instant now = Instant.now();
         long nextVersion = room.getVersion() + 1;
+        String previousLeaderUserId = room.getLeaderUserId();
+        BigDecimal previousAmount = room.hasLeader() ? room.getCurrentPrice() : BigDecimal.ZERO;
+        auctionWalletService.reserveBid(request.userId(), request.amount(), previousLeaderUserId, previousAmount);
         room.setCurrentPrice(request.amount());
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());
@@ -83,6 +89,7 @@ public class MysqlBidEngine implements BidEngine {
 
         if (now.isAfter(room.getEndsAt())) {
             auctionRoomReadService.closeRoom(room);
+            auctionWalletService.settleRoom(room.getRoomId(), room.getLeaderUserId(), room.getCurrentPrice());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
         }
     }

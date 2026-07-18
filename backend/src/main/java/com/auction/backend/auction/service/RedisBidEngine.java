@@ -33,6 +33,7 @@ public class RedisBidEngine implements BidEngine {
     private final RedisScript<String> hotBidScript;
     private final AuctionQualificationService auctionQualificationService;
     private final HotBidPersistenceGateway hotBidPersistenceGateway;
+    private final AuctionWalletService auctionWalletService;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionCacheService auctionCacheService,
@@ -40,7 +41,8 @@ public class RedisBidEngine implements BidEngine {
                           AuctionCacheProperties auctionCacheProperties,
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
-                          HotBidPersistenceGateway hotBidPersistenceGateway) {
+                          HotBidPersistenceGateway hotBidPersistenceGateway,
+                          AuctionWalletService auctionWalletService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionCacheService = auctionCacheService;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -48,6 +50,7 @@ public class RedisBidEngine implements BidEngine {
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
         this.hotBidPersistenceGateway = hotBidPersistenceGateway;
+        this.auctionWalletService = auctionWalletService;
         DefaultRedisScript<String> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
         script.setResultType(String.class);
@@ -63,6 +66,14 @@ public class RedisBidEngine implements BidEngine {
 
         AuctionRoom qualificationRoom = auctionRoomReadService.findRoom(roomId);
         auctionQualificationService.assertEligibleToBid(qualificationRoom, request.userId());
+        String expectedPreviousLeaderUserId = !cachedRoom.recentBids().isEmpty() ? cachedRoom.recentBids().get(0).userId() : null;
+        BigDecimal expectedPreviousAmount = !cachedRoom.recentBids().isEmpty() ? cachedRoom.recentBids().get(0).amount() : BigDecimal.ZERO;
+        auctionWalletService.assertCanReserveBid(
+                request.userId(),
+                request.amount(),
+                expectedPreviousLeaderUserId,
+                expectedPreviousAmount
+        );
 
         long nowMillis = Instant.now().toEpochMilli();
         String result = executeHotBidScript(roomId, request, nowMillis);
@@ -72,6 +83,12 @@ public class RedisBidEngine implements BidEngine {
         }
 
         HotBidResult hotBidResult = parseHotBidResult(roomId, result);
+        auctionWalletService.reserveBid(
+                request.userId(),
+                request.amount(),
+                hotBidResult.previousLeaderUserId(),
+                hotBidResult.previousAmount()
+        );
 
         AuctionRoom room = auctionRoomReadService.findRoom(roomId);
         Instant bidTime = Instant.ofEpochMilli(nowMillis);
@@ -105,6 +122,7 @@ public class RedisBidEngine implements BidEngine {
         if (now.isAfter(room.endsAt())) {
             AuctionRoom dbRoom = auctionRoomReadService.findRoom(room.roomId());
             auctionRoomReadService.closeRoom(dbRoom);
+            auctionWalletService.settleRoom(dbRoom.getRoomId(), dbRoom.getLeaderUserId(), dbRoom.getCurrentPrice());
             hotRoomManager.clear(room.roomId());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
         }
@@ -150,12 +168,14 @@ public class RedisBidEngine implements BidEngine {
         }
 
         String[] parts = result.split("\\|");
-        if ("OK".equals(parts[0]) && parts.length >= 5) {
+        if ("OK".equals(parts[0]) && parts.length >= 7) {
             return new HotBidResult(
                     Long.parseLong(parts[1]),
                     Integer.parseInt(parts[2]),
                     new BigDecimal(parts[3]),
-                    Long.parseLong(parts[4])
+                    Long.parseLong(parts[4]),
+                    parts[5].isBlank() ? null : parts[5],
+                    new BigDecimal(parts[6])
             );
         }
 
@@ -169,6 +189,7 @@ public class RedisBidEngine implements BidEngine {
                 case "ROOM_CLOSED", "ROOM_EXPIRED" -> {
                     AuctionRoom dbRoom = auctionRoomReadService.findRoom(roomId);
                     auctionRoomReadService.closeRoom(dbRoom);
+                    auctionWalletService.settleRoom(dbRoom.getRoomId(), dbRoom.getLeaderUserId(), dbRoom.getCurrentPrice());
                     hotRoomManager.clear(roomId);
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
                 }
@@ -190,7 +211,9 @@ public class RedisBidEngine implements BidEngine {
             long endsAtEpochMilli,
             int bidCount,
             BigDecimal minNextBid,
-            long roomVersion
+            long roomVersion,
+            String previousLeaderUserId,
+            BigDecimal previousAmount
     ) {
     }
 }

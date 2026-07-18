@@ -17,6 +17,8 @@ public interface UserAccountMapper {
 
     UserAccount findByAccount(@Param("account") String account);
 
+    UserAccount findByAccountForUpdate(@Param("account") String account);
+
     List<String> findAllUserIds();
 
     int insert(UserAccount userAccount);
@@ -24,4 +26,6 @@ public interface UserAccountMapper {
     int updateProfile(UserAccount userAccount);
 
     int updatePassword(UserAccount userAccount);
+
+    int updateWallet(UserAccount userAccount);
 }

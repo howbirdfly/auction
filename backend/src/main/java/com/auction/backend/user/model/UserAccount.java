@@ -1,5 +1,6 @@
 package com.auction.backend.user.model;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 public class UserAccount {
@@ -10,6 +11,8 @@ public class UserAccount {
     private String nickname;
     private String avatarUrl;
     private String bio;
+    private BigDecimal balance;
+    private BigDecimal frozenAmount;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -22,6 +25,8 @@ public class UserAccount {
                        String nickname,
                        String avatarUrl,
                        String bio,
+                       BigDecimal balance,
+                       BigDecimal frozenAmount,
                        Instant createdAt,
                        Instant updatedAt) {
         this.userId = userId;
@@ -30,6 +35,8 @@ public class UserAccount {
         this.nickname = nickname;
         this.avatarUrl = avatarUrl;
         this.bio = bio;
+        this.balance = balance;
+        this.frozenAmount = frozenAmount;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -80,6 +87,22 @@ public class UserAccount {
 
     public void setBio(String bio) {
         this.bio = bio;
+    }
+
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
+    }
+
+    public BigDecimal getFrozenAmount() {
+        return frozenAmount;
+    }
+
+    public void setFrozenAmount(BigDecimal frozenAmount) {
+        this.frozenAmount = frozenAmount;
     }
 
     public Instant getCreatedAt() {

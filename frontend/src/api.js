@@ -74,6 +74,13 @@ export function updateUser(userId, form) {
   });
 }
 
+export function rechargeUser(userId, form) {
+  return request(`/users/${userId}/recharge`, {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
 export function createAvatarUploadPolicy(form) {
   return request("/uploads/avatar-policy", {
     method: "POST",

@@ -9,7 +9,9 @@ import {
   fetchQualification,
   fetchRoom,
   fetchRooms,
+  fetchUser,
   fetchUsers,
+  rechargeUser,
   registerForAuction,
   updateUser,
   uploadAvatarToOss,
@@ -159,6 +161,17 @@ function setCurrentUser(userId) {
   state.currentUserId = userId;
   syncCurrentUser();
   renderPage();
+}
+
+async function refreshCurrentUser() {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    return;
+  }
+
+  const updatedUser = await fetchUser(currentUser.userId);
+  state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
+  syncCurrentUser();
 }
 
 function getLiveRooms() {
@@ -918,6 +931,35 @@ function renderProfileView() {
         <p class="profile-bio">${currentUser.bio || "\u8fd9\u4e2a\u7528\u6237\u8fd8\u6ca1\u6709\u5199\u7b80\u4ecb\u3002"}</p>
       </section>
 
+      <section class="room-panel">
+        <div class="section-header compact">
+          <div>
+            <h2>账户余额</h2>
+            <p>这里可以给当前账号充值，保证金和领先中的出价金额都会从这里冻结或扣除。</p>
+          </div>
+        </div>
+        <div class="profile-metrics">
+          <div class="metric-card">
+            <span>可用余额</span>
+            <strong>${formatPrice(currentUser.balance)}</strong>
+          </div>
+          <div class="metric-card">
+            <span>冻结金额</span>
+            <strong>${formatPrice(currentUser.frozenAmount)}</strong>
+          </div>
+          <div class="metric-card">
+            <span>总资产</span>
+            <strong>${formatPrice(Number(currentUser.balance || 0) + Number(currentUser.frozenAmount || 0))}</strong>
+          </div>
+        </div>
+        <form id="rechargeForm" class="stack-form">
+          <div class="compact-grid">
+            <input name="amount" type="number" min="0.01" step="0.01" placeholder="充值金额" required />
+            <button type="submit">立即充值</button>
+          </div>
+        </form>
+      </section>
+
       <section class="profile-metrics">
         <div class="metric-card">
           <span>我创建的房间</span>
@@ -1004,6 +1046,7 @@ function renderProfileView() {
       openRoom(button.dataset.roomId);
     });
   });
+  screenEl.querySelector("#rechargeForm")?.addEventListener("submit", handleRecharge);
   screenEl.querySelector("#profileForm")?.addEventListener("submit", handleUpdateProfile);
 }
 
@@ -1265,6 +1308,7 @@ async function handleRegisterForAuction() {
       userId: currentUser.account,
       nickname: currentUser.nickname,
     });
+    await refreshCurrentUser();
     state.selectedRoomQualification = await fetchQualification(state.selectedRoomId, currentUser.account);
     setFeedback("\u62a5\u540d\u6210\u529f\uff0c\u5f53\u524d\u8d26\u53f7\u5df2\u51bb\u7ed3\u4fdd\u8bc1\u91d1\uff0c\u53ef\u4ee5\u76f4\u63a5\u51fa\u4ef7");
     renderPage();
@@ -1351,6 +1395,30 @@ async function handleUpdateProfile(event) {
   }
 }
 
+async function handleRecharge(event) {
+  event.preventDefault();
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    setFeedback("当前没有可充值的用户", true);
+    return;
+  }
+
+  const formData = new FormData(event.currentTarget);
+  const payload = Object.fromEntries(formData.entries());
+  payload.amount = Number(payload.amount);
+
+  try {
+    const updatedUser = await rechargeUser(currentUser.userId, payload);
+    state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
+    syncCurrentUser();
+    event.currentTarget.reset();
+    setFeedback(`充值成功，当前可用余额 ${formatPrice(updatedUser.balance)}`);
+    renderPage();
+  } catch (error) {
+    setFeedback(error.message, true);
+  }
+}
+
 async function handleAvatarSelected(event) {
   const currentUser = getCurrentUser();
   const file = event.target.files?.[0];
@@ -1427,6 +1495,7 @@ async function handleBid(event) {
 
   try {
     const room = await createBid(state.selectedRoomId, payload);
+    await refreshCurrentUser();
     applySelectedRoom(room);
     state.selectedRoomLeaderboard = await fetchLeaderboard(state.selectedRoomId);
     upsertRoom(room);
@@ -1465,7 +1534,7 @@ async function bootstrap() {
 
 async function refreshRoomsSilently() {
   try {
-    await loadRooms();
+    await Promise.all([loadRooms(), loadUsers()]);
 
     if (state.activeTab !== "home") {
       return;

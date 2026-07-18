@@ -391,6 +391,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             state.put("currentPrice", room.currentPrice().toPlainString());
             state.put("stepPrice", room.stepPrice().toPlainString());
             state.put("minNextBid", room.minNextBid().toPlainString());
+            state.put("leaderUserId", room.recentBids().isEmpty() ? "" : room.recentBids().get(0).userId());
             state.put("leaderNickname", room.leaderNickname() == null ? "" : room.leaderNickname());
             state.put("registrationRequired", Boolean.toString(room.registrationRequired()));
             state.put("depositAmount", room.depositAmount().toPlainString());

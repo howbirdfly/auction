@@ -29,6 +29,11 @@ local currentPrice = tonumber(redis.call("HGET", stateKey, "currentPrice"))
 local stepPrice = tonumber(redis.call("HGET", stateKey, "stepPrice"))
 local bidCount = tonumber(redis.call("HGET", stateKey, "bidCount")) or 0
 local version = tonumber(redis.call("HGET", stateKey, "version")) or 0
+local previousLeaderUserId = redis.call("HGET", stateKey, "leaderUserId") or ""
+local previousAmount = 0
+if bidCount > 0 then
+    previousAmount = currentPrice
+end
 
 local minNextBid = startPrice
 if bidCount > 0 then
@@ -46,6 +51,7 @@ local ttlSeconds = math.max(1, math.ceil((endsAtMillis - nowMillis) / 1000) + ho
 
 redis.call("HSET", stateKey,
     "currentPrice", string.format("%.2f", amount),
+    "leaderUserId", userId,
     "leaderNickname", nickname,
     "endsAtEpochMilli", tostring(endsAtMillis),
     "minNextBid", string.format("%.2f", newMinNextBid),
@@ -70,4 +76,4 @@ redis.call("LPUSH", recentBidKey, recentBidPayload)
 redis.call("LTRIM", recentBidKey, 0, 9)
 redis.call("EXPIRE", recentBidKey, ttlSeconds)
 
-return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid) .. "|" .. tostring(newVersion)
+return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid) .. "|" .. tostring(newVersion) .. "|" .. previousLeaderUserId .. "|" .. string.format("%.2f", previousAmount)
