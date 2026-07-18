@@ -1397,13 +1397,14 @@ async function handleUpdateProfile(event) {
 
 async function handleRecharge(event) {
   event.preventDefault();
+  const form = event.currentTarget;
   const currentUser = getCurrentUser();
   if (!currentUser) {
     setFeedback("当前没有可充值的用户", true);
     return;
   }
 
-  const formData = new FormData(event.currentTarget);
+  const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
   payload.amount = Number(payload.amount);
 
@@ -1411,7 +1412,7 @@ async function handleRecharge(event) {
     const updatedUser = await rechargeUser(currentUser.userId, payload);
     state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
     syncCurrentUser();
-    event.currentTarget.reset();
+    form.reset();
     setFeedback(`充值成功，当前可用余额 ${formatPrice(updatedUser.balance)}`);
     renderPage();
   } catch (error) {
