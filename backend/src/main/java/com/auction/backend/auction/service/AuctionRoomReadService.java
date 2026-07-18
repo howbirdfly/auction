@@ -30,13 +30,16 @@ public class AuctionRoomReadService {
     private final AuctionRoomMapper auctionRoomMapper;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionCacheService auctionCacheService;
+    private final HotRoomManager hotRoomManager;
 
     public AuctionRoomReadService(AuctionRoomMapper auctionRoomMapper,
                                   AuctionBidRecordMapper auctionBidRecordMapper,
-                                  AuctionCacheService auctionCacheService) {
+                                  AuctionCacheService auctionCacheService,
+                                  HotRoomManager hotRoomManager) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
+        this.hotRoomManager = hotRoomManager;
     }
 
     @Transactional(readOnly = true)
@@ -111,6 +114,7 @@ public class AuctionRoomReadService {
                 room.getLeaderNickname(),
                 room.isRegistrationRequired(),
                 room.getDepositAmount(),
+                hotRoomManager.isHot(room.getRoomId()),
                 room.getVersion(),
                 room.getEndsAt(),
                 secondsRemaining,
@@ -210,6 +214,7 @@ public class AuctionRoomReadService {
                 snapshot.leaderNickname(),
                 snapshot.registrationRequired(),
                 snapshot.depositAmount(),
+                snapshot.hot(),
                 snapshot.version(),
                 snapshot.endsAt(),
                 snapshot.secondsRemaining(),

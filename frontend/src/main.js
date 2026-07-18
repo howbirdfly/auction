@@ -248,6 +248,23 @@ function applySelectedRoom(room) {
   state.selectedRoom = room;
 }
 
+function clearSelectedRoom() {
+  state.selectedRoomId = null;
+  state.selectedRoom = null;
+  state.selectedRoomLeaderboard = [];
+  state.selectedRoomQualification = null;
+  state.socket?.subscribeRoom(null);
+}
+
+function syncSelectedRoomRealtime() {
+  if (!state.selectedRoomId || !state.selectedRoom?.hot) {
+    state.socket?.subscribeRoom(null);
+    return;
+  }
+
+  state.socket?.subscribeRoom(state.selectedRoomId);
+}
+
 function renderHomeHeader() {
   return `
     <section class="home-top">
@@ -1165,10 +1182,7 @@ async function loadRooms() {
   if (state.selectedRoomId) {
     const stillExists = state.rooms.some((room) => room.roomId === state.selectedRoomId);
     if (!stillExists) {
-      state.selectedRoomId = null;
-      state.selectedRoom = null;
-      state.selectedRoomLeaderboard = [];
-      state.selectedRoomQualification = null;
+      clearSelectedRoom();
     }
   }
 }
@@ -1189,6 +1203,7 @@ async function loadSelectedRoom(roomId) {
   upsertRoom(room);
   state.selectedRoomLeaderboard = leaderboard;
   state.selectedRoomQualification = qualification;
+  syncSelectedRoomRealtime();
 }
 
 async function openRoom(roomId) {
@@ -1196,7 +1211,6 @@ async function openRoom(roomId) {
     state.selectedRoomId = roomId;
     state.selectedRoomQualification = null;
     await loadSelectedRoom(roomId);
-    state.socket?.subscribeRoom(roomId);
     renderPage();
   } catch (error) {
     setFeedback(error.message, true);
@@ -1430,10 +1444,7 @@ async function handleDeleteRoom(roomId) {
 
   try {
     await deleteRoom(roomId);
-    state.selectedRoomId = null;
-    state.selectedRoom = null;
-    state.selectedRoomLeaderboard = [];
-    state.selectedRoomQualification = null;
+    clearSelectedRoom();
     await loadRooms();
     state.activeTab = "home";
     setFeedback(`已删除房间 ${roomId}`);
@@ -1477,10 +1488,7 @@ bottomNavItems.forEach((item) => {
     }
     state.activeTab = item.dataset.tab;
     if (item.dataset.tab !== "home") {
-      state.selectedRoomId = null;
-      state.selectedRoom = null;
-      state.selectedRoomLeaderboard = [];
-      state.selectedRoomQualification = null;
+      clearSelectedRoom();
     }
     renderPage();
   });
@@ -1489,14 +1497,17 @@ bottomNavItems.forEach((item) => {
 bindPlaceholderButtons();
 
 state.socket = createAuctionSocket({
-  onLobbyMessage(rooms) {
-    state.rooms = mergeRoomsByVersion(state.rooms, rooms);
-    renderPage();
-  },
   onRoomMessage(room) {
     if (room.roomId === state.selectedRoomId) {
       applySelectedRoom(room);
       upsertRoom(room);
+      syncSelectedRoomRealtime();
+      renderPage();
+    }
+  },
+  onLeaderboardMessage(roomId, leaderboard) {
+    if (roomId === state.selectedRoomId) {
+      state.selectedRoomLeaderboard = leaderboard;
       renderPage();
     }
   },

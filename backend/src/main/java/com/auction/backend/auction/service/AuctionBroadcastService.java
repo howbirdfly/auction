@@ -1,5 +1,6 @@
 package com.auction.backend.auction.service;
 
+import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,10 @@ public class AuctionBroadcastService {
 
     public void broadcastRoom(AuctionRoomSnapshot snapshot) {
         messagingTemplate.convertAndSend("/topic/auction/" + snapshot.roomId(), snapshot);
+    }
+
+    public void broadcastLeaderboard(String roomId, List<AuctionLeaderboardEntry> leaderboard) {
+        messagingTemplate.convertAndSend("/topic/auction/" + roomId + "/leaderboard", leaderboard);
     }
 
     public void broadcastLobby(List<AuctionRoomSnapshot> snapshots) {

@@ -20,6 +20,7 @@ public record AuctionRoomSnapshot(
         String leaderNickname,
         boolean registrationRequired,
         BigDecimal depositAmount,
+        boolean hot,
         long version,
         Instant endsAt,
         long secondsRemaining,

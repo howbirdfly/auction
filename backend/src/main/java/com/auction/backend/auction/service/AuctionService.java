@@ -72,6 +72,7 @@ public class AuctionService {
                 && !hotRoomManager.isHot(roomId)
                 && hotRoomManager.recordAccess(roomId)) {
             hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
+            return auctionRoomReadService.getRoom(roomId);
         }
 
         return snapshot;
@@ -125,7 +126,9 @@ public class AuctionService {
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
         if (hotRoomManager.isHot(roomId)) {
-            hotRoomManager.markHot(snapshot, auctionRoomReadService.getLeaderboard(roomId));
+            List<AuctionLeaderboardEntry> leaderboard = auctionRoomReadService.getLeaderboard(roomId);
+            hotRoomManager.markHot(snapshot, leaderboard);
+            broadcastService.broadcastLeaderboard(roomId, leaderboard);
         }
 
         broadcastService.broadcastRoom(snapshot);
@@ -155,6 +158,7 @@ public class AuctionService {
         expiredRooms.forEach(room -> {
             AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
             broadcastService.broadcastRoom(snapshot);
+            broadcastService.broadcastLeaderboard(room.getRoomId(), auctionRoomReadService.getLeaderboard(room.getRoomId()));
         });
     }
 
