@@ -607,6 +607,13 @@ button {
   gap: 10px;
 }
 
+.profile-action-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .profile-history-tab {
   border: 1px solid rgba(32, 36, 44, 0.08);
   border-radius: 999px;

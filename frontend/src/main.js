@@ -48,6 +48,7 @@ const state = {
   userAuctionHistoryLoading: false,
   profileHistoryTab: "created",
   profileEditorOpen: false,
+  profileRechargeOpen: false,
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
@@ -1099,7 +1100,10 @@ function renderProfileView() {
                 .join("")}
             </select>
           </label>
-          <button class="ghost-button" id="openProfileEditorButton">编辑个人资料</button>
+          <div class="profile-action-buttons">
+            <button class="ghost-button" id="openProfileRechargeButton">充值</button>
+            <button class="ghost-button" id="openProfileEditorButton">编辑个人资料</button>
+          </div>
         </div>
       </section>
 
@@ -1118,6 +1122,7 @@ function renderProfileView() {
         </div>
         <p class="profile-bio">${currentUser.bio || "\u8fd9\u4e2a\u7528\u6237\u8fd8\u6ca1\u6709\u5199\u7b80\u4ecb\u3002"}</p>
         <div class="profile-inline-actions">
+          <button type="button" class="ghost-button" id="profileCardRechargeButton">充值</button>
           <button type="button" class="ghost-button" id="profileCardEditButton">编辑个人资料</button>
         </div>
       </section>
@@ -1143,12 +1148,6 @@ function renderProfileView() {
             <strong>${formatPrice(Number(currentUser.balance || 0) + Number(currentUser.frozenAmount || 0))}</strong>
           </div>
         </div>
-        <form id="rechargeForm" class="stack-form">
-          <div class="compact-grid">
-            <input name="amount" type="number" min="0.01" step="0.01" placeholder="充值金额" required />
-            <button type="submit">立即充值</button>
-          </div>
-        </form>
       </section>
 
       <section class="profile-metrics">
@@ -1254,6 +1253,27 @@ function renderProfileView() {
           `
           : ""
       }
+      ${
+        state.profileRechargeOpen
+          ? `
+            <div class="profile-modal-backdrop" id="profileRechargeBackdrop">
+              <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profileRechargeTitle">
+                <div class="profile-modal-head">
+                  <div>
+                    <h2 id="profileRechargeTitle">账户充值</h2>
+                    <p>给当前账号补充余额，保证金冻结和竞拍扣款都会从这里走。</p>
+                  </div>
+                  <button type="button" class="ghost-button profile-modal-close" id="closeProfileRechargeButton">关闭</button>
+                </div>
+                <form id="rechargeForm" class="stack-form profile-modal-form">
+                  <input name="amount" type="number" min="0.01" step="0.01" placeholder="充值金额" required />
+                  <button type="submit">立即充值</button>
+                </form>
+              </section>
+            </div>
+          `
+          : ""
+      }
     </section>
   `;
 
@@ -1266,9 +1286,17 @@ function renderProfileView() {
   screenEl.querySelector("#avatarFileInput")?.addEventListener("change", handleAvatarSelected);
   const openProfileEditor = () => {
     state.profileEditorOpen = true;
+    state.profileRechargeOpen = false;
     renderPage();
   };
+  const openProfileRecharge = () => {
+    state.profileRechargeOpen = true;
+    state.profileEditorOpen = false;
+    renderPage();
+  };
+  screenEl.querySelector("#openProfileRechargeButton")?.addEventListener("click", openProfileRecharge);
   screenEl.querySelector("#openProfileEditorButton")?.addEventListener("click", openProfileEditor);
+  screenEl.querySelector("#profileCardRechargeButton")?.addEventListener("click", openProfileRecharge);
   screenEl.querySelector("#profileCardEditButton")?.addEventListener("click", openProfileEditor);
   screenEl.querySelector("#closeProfileEditorButton")?.addEventListener("click", () => {
     state.profileEditorOpen = false;
@@ -1279,6 +1307,17 @@ function renderProfileView() {
       return;
     }
     state.profileEditorOpen = false;
+    renderPage();
+  });
+  screenEl.querySelector("#closeProfileRechargeButton")?.addEventListener("click", () => {
+    state.profileRechargeOpen = false;
+    renderPage();
+  });
+  screenEl.querySelector("#profileRechargeBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id !== "profileRechargeBackdrop") {
+      return;
+    }
+    state.profileRechargeOpen = false;
     renderPage();
   });
   screenEl.querySelectorAll("[data-profile-history-tab]").forEach((button) => {
@@ -1694,6 +1733,7 @@ async function handleRecharge(event) {
     state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
     syncCurrentUser();
     form.reset();
+    state.profileRechargeOpen = false;
     setFeedback(`充值成功，当前可用余额 ${formatPrice(updatedUser.balance)}`);
     renderPage();
   } catch (error) {
@@ -1839,6 +1879,7 @@ bottomNavItems.forEach((item) => {
     }
     state.activeTab = item.dataset.tab;
     state.profileEditorOpen = false;
+    state.profileRechargeOpen = false;
     if (item.dataset.tab !== "home") {
       clearSelectedRoom();
     }
