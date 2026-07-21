@@ -60,8 +60,17 @@ export function createAuctionSocket({
 
     leaderboardSubscription = client.subscribe(`/topic/auction/${activeRoomId}/leaderboard`, (frame) => {
       const payload = parseBody(frame);
-      if (Array.isArray(payload)) {
+      if (payload && Array.isArray(payload.leaderboard)) {
         onLeaderboardMessage(activeRoomId, payload);
+        return;
+      }
+
+      if (Array.isArray(payload)) {
+        onLeaderboardMessage(activeRoomId, {
+          roomId: activeRoomId,
+          version: 0,
+          leaderboard: payload,
+        });
       }
     });
   }

@@ -45,6 +45,7 @@ const state = {
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
+  selectedRoomLeaderboardVersion: 0,
   selectedRoomQualification: null,
   socket: null,
   activeTab: "home",
@@ -224,6 +225,10 @@ function getRoomVersion(room) {
   return Number(room?.version || 0);
 }
 
+function getLeaderboardVersion() {
+  return Number(state.selectedRoomLeaderboardVersion || 0);
+}
+
 function shouldApplyRoomUpdate(currentRoom, incomingRoom) {
   if (!currentRoom) {
     return true;
@@ -255,16 +260,30 @@ function upsertRoom(room) {
 
 function applySelectedRoom(room) {
   if (!shouldApplyRoomUpdate(state.selectedRoom, room)) {
-    return;
+    return false;
   }
 
   state.selectedRoom = room;
+  return true;
+}
+
+function applySelectedRoomLeaderboard(leaderboard, version = getRoomVersion(state.selectedRoom)) {
+  const safeVersion = Number(version || 0);
+  const minimumVersion = Math.max(getLeaderboardVersion(), getRoomVersion(state.selectedRoom));
+  if (safeVersion < minimumVersion) {
+    return false;
+  }
+
+  state.selectedRoomLeaderboard = Array.isArray(leaderboard) ? leaderboard : [];
+  state.selectedRoomLeaderboardVersion = safeVersion;
+  return true;
 }
 
 function clearSelectedRoom() {
   state.selectedRoomId = null;
   state.selectedRoom = null;
   state.selectedRoomLeaderboard = [];
+  state.selectedRoomLeaderboardVersion = 0;
   state.selectedRoomQualification = null;
   state.socket?.subscribeRoom(null);
 }
@@ -1244,7 +1263,7 @@ async function loadSelectedRoom(roomId) {
   ]);
   applySelectedRoom(room);
   upsertRoom(room);
-  state.selectedRoomLeaderboard = leaderboard;
+  applySelectedRoomLeaderboard(leaderboard, getRoomVersion(room));
   state.selectedRoomQualification = qualification;
   syncSelectedRoomRealtime();
 }
@@ -1498,8 +1517,8 @@ async function handleBid(event) {
     const room = await createBid(state.selectedRoomId, payload);
     await refreshCurrentUser();
     applySelectedRoom(room);
-    state.selectedRoomLeaderboard = await fetchLeaderboard(state.selectedRoomId);
     upsertRoom(room);
+    applySelectedRoomLeaderboard(await fetchLeaderboard(state.selectedRoomId), getRoomVersion(room));
     setFeedback(`出价成功，当前领先者：${room.leaderNickname}`);
     renderPage();
   } catch (error) {
@@ -1569,16 +1588,20 @@ bindPlaceholderButtons();
 state.socket = createAuctionSocket({
   onRoomMessage(room) {
     if (room.roomId === state.selectedRoomId) {
-      applySelectedRoom(room);
+      const applied = applySelectedRoom(room);
       upsertRoom(room);
       syncSelectedRoomRealtime();
-      renderPage();
+      if (applied) {
+        renderPage();
+      }
     }
   },
-  onLeaderboardMessage(roomId, leaderboard) {
+  onLeaderboardMessage(roomId, payload) {
     if (roomId === state.selectedRoomId) {
-      state.selectedRoomLeaderboard = leaderboard;
-      renderPage();
+      const applied = applySelectedRoomLeaderboard(payload.leaderboard, payload.version);
+      if (applied) {
+        renderPage();
+      }
     }
   },
 });

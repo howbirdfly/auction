@@ -131,7 +131,7 @@ public class AuctionService {
         if (hotRoomManager.isHot(roomId)) {
             List<AuctionLeaderboardEntry> leaderboard = auctionRoomReadService.getLeaderboard(roomId);
             hotRoomManager.markHot(snapshot, leaderboard);
-            broadcastService.broadcastLeaderboard(roomId, leaderboard);
+            broadcastService.broadcastLeaderboard(snapshot, leaderboard);
         }
 
         broadcastService.broadcastRoom(snapshot);
@@ -162,7 +162,7 @@ public class AuctionService {
         expiredRooms.forEach(room -> {
             AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
             broadcastService.broadcastRoom(snapshot);
-            broadcastService.broadcastLeaderboard(room.getRoomId(), auctionRoomReadService.getLeaderboard(room.getRoomId()));
+            broadcastService.broadcastLeaderboard(snapshot, auctionRoomReadService.getLeaderboard(room.getRoomId()));
         });
     }
 
