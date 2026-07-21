@@ -594,7 +594,35 @@ button {
 .profile-avatar-wrap,
 .profile-account-switcher,
 .bid-amount-panel,
-.leaderboard-list {
+.leaderboard-list,
+.profile-history-shell,
+.profile-history-group {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-history-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-history-tab {
+  border: 1px solid rgba(32, 36, 44, 0.08);
+  border-radius: 999px;
+  padding: 12px 14px;
+  background: #f8fafe;
+  color: #7d8696;
+  font-weight: 700;
+}
+
+.profile-history-tab.active {
+  background: #20242c;
+  border-color: #20242c;
+  color: #ffffff;
+}
+
+.profile-history-section {
   display: grid;
   gap: 12px;
 }

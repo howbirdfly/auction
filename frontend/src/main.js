@@ -46,6 +46,7 @@ const state = {
   userAuctionHistory: null,
   userAuctionHistoryUserId: null,
   userAuctionHistoryLoading: false,
+  profileHistoryTab: "created",
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
@@ -1165,37 +1166,65 @@ function renderProfileView() {
         </div>
       </section>
 
-      ${renderProfileHistorySection({
-        title: "我创建的已结束房间",
-        description: "这里会展示你发布且已经结束的房间，方便回看成交或流拍结果。",
-        rooms: createdClosedRooms,
-        loading: false,
-        emptyMessage: "你还没有已结束的房间，先去发布一个试试吧。",
-      })}
-
-      ${renderProfileHistorySection({
-        title: "我报名过的房间",
-        description: "这里会展示你冻结过保证金、正式报名参与过的竞拍房间。",
-        rooms: registeredRooms,
-        loading: state.userAuctionHistoryLoading,
-        emptyMessage: "你还没有报名过任何竞拍房间。",
-      })}
-
-      ${renderProfileHistorySection({
-        title: "我拍到的房间",
-        description: "这些是你在竞拍结束后成功拍到商品的房间。",
-        rooms: wonRooms,
-        loading: state.userAuctionHistoryLoading,
-        emptyMessage: "你暂时还没有拍到过房间里的商品。",
-      })}
-
-      ${renderProfileHistorySection({
-        title: "我参与但未拍到",
-        description: "这些房间你参与过，但最终没有成为最后的成交获胜者。",
-        rooms: missedRooms,
-        loading: state.userAuctionHistoryLoading,
-        emptyMessage: "你当前还没有“参与但未拍到”的房间记录。",
-      })}
+      <section class="room-panel profile-history-shell">
+        <div class="section-header compact">
+          <div>
+            <h2>竞拍历史</h2>
+            <p>可以切换查看你创建过的房间，或者你亲自参与过的竞拍记录。</p>
+          </div>
+        </div>
+        <div class="profile-history-tabs">
+          <button
+            type="button"
+            class="profile-history-tab ${state.profileHistoryTab === "created" ? "active" : ""}"
+            data-profile-history-tab="created"
+          >
+            我创建的
+          </button>
+          <button
+            type="button"
+            class="profile-history-tab ${state.profileHistoryTab === "participated" ? "active" : ""}"
+            data-profile-history-tab="participated"
+          >
+            我参加的
+          </button>
+        </div>
+        ${
+          state.profileHistoryTab === "created"
+            ? renderProfileHistorySection({
+                title: "我创建的已结束房间",
+                description: "这里会展示你发布且已经结束的房间，方便回看成交或流拍结果。",
+                rooms: createdClosedRooms,
+                loading: false,
+                emptyMessage: "你还没有已结束的房间，先去发布一个试试吧。",
+              })
+            : `
+              <div class="profile-history-group">
+                ${renderProfileHistorySection({
+                  title: "我报名过的房间",
+                  description: "这里会展示你冻结过保证金、正式报名参与过的竞拍房间。",
+                  rooms: registeredRooms,
+                  loading: state.userAuctionHistoryLoading,
+                  emptyMessage: "你还没有报名过任何竞拍房间。",
+                })}
+                ${renderProfileHistorySection({
+                  title: "我拍到的房间",
+                  description: "这些是你在竞拍结束后成功拍到商品的房间。",
+                  rooms: wonRooms,
+                  loading: state.userAuctionHistoryLoading,
+                  emptyMessage: "你暂时还没有拍到过房间里的商品。",
+                })}
+                ${renderProfileHistorySection({
+                  title: "我参与但未拍到",
+                  description: "这些房间你参与过，但最终没有成为最后的成交获胜者。",
+                  rooms: missedRooms,
+                  loading: state.userAuctionHistoryLoading,
+                  emptyMessage: "你当前还没有“参与但未拍到”的房间记录。",
+                })}
+              </div>
+            `
+        }
+      </section>
 
       <section class="room-panel">
         <div id="profileEditorAnchor"></div>
@@ -1225,6 +1254,12 @@ function renderProfileView() {
   screenEl.querySelector("#avatarFileInput")?.addEventListener("change", handleAvatarSelected);
   screenEl.querySelector("#jumpToEditor")?.addEventListener("click", () => {
     document.querySelector("#profileEditorAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  screenEl.querySelectorAll("[data-profile-history-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.profileHistoryTab = button.dataset.profileHistoryTab;
+      renderPage();
+    });
   });
   screenEl.querySelectorAll(".history-room-item[data-room-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1262,7 +1297,7 @@ function renderHistoryRoomItem(room) {
 
 function renderProfileHistorySection({ title, description, rooms, loading, emptyMessage }) {
   return `
-    <section class="room-panel">
+    <section class="profile-history-section">
       <div class="section-header compact">
         <div>
           <h2>${title}</h2>
