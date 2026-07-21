@@ -135,3 +135,25 @@ ALTER TABLE user_account
 
 ALTER TABLE user_account
     ADD COLUMN IF NOT EXISTS frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
+
+CREATE TABLE IF NOT EXISTS wallet_transaction (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    business_key VARCHAR(128),
+    user_id VARCHAR(32) NOT NULL,
+    account VARCHAR(32) NOT NULL,
+    transaction_type VARCHAR(32) NOT NULL,
+    available_delta DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_delta DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    balance_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    reference_type VARCHAR(32),
+    reference_id VARCHAR(64),
+    description VARCHAR(255),
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_wallet_transaction_business_key
+    ON wallet_transaction (business_key);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_transaction_user_created
+    ON wallet_transaction (user_id, created_at);

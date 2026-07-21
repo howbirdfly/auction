@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.user.mapper.WalletTransactionMapper">
+
+    <resultMap id="WalletTransactionResultMap" type="com.auction.backend.user.model.WalletTransaction">
+        <id property="id" column="id"/>
+        <result property="businessKey" column="business_key"/>
+        <result property="userId" column="user_id"/>
+        <result property="account" column="account"/>
+        <result property="transactionType" column="transaction_type"/>
+        <result property="availableDelta" column="available_delta"/>
+        <result property="frozenDelta" column="frozen_delta"/>
+        <result property="balanceAfter" column="balance_after"/>
+        <result property="frozenAfter" column="frozen_after"/>
+        <result property="referenceType" column="reference_type"/>
+        <result property="referenceId" column="reference_id"/>
+        <result property="description" column="description"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findByBusinessKey" resultMap="WalletTransactionResultMap">
+        select id,
+               business_key,
+               user_id,
+               account,
+               transaction_type,
+               available_delta,
+               frozen_delta,
+               balance_after,
+               frozen_after,
+               reference_type,
+               reference_id,
+               description,
+               created_at
+        from wallet_transaction
+        where business_key = #{businessKey}
+    </select>
+
+    <select id="findLatestByUserId" resultMap="WalletTransactionResultMap">
+        select id,
+               business_key,
+               user_id,
+               account,
+               transaction_type,
+               available_delta,
+               frozen_delta,
+               balance_after,
+               frozen_after,
+               reference_type,
+               reference_id,
+               description,
+               created_at
+        from wallet_transaction
+        where user_id = #{userId}
+        order by created_at desc, id desc
+        limit #{limit}
+    </select>
+
+    <insert id="insert" parameterType="com.auction.backend.user.model.WalletTransaction" useGeneratedKeys="true" keyProperty="id">
+        insert into wallet_transaction (
+            business_key,
+            user_id,
+            account,
+            transaction_type,
+            available_delta,
+            frozen_delta,
+            balance_after,
+            frozen_after,
+            reference_type,
+            reference_id,
+            description,
+            created_at
+        ) values (
+            #{businessKey},
+            #{userId},
+            #{account},
+            #{transactionType},
+            #{availableDelta},
+            #{frozenDelta},
+            #{balanceAfter},
+            #{frozenAfter},
+            #{referenceType},
+            #{referenceId},
+            #{description},
+            #{createdAt}
+        )
+    </insert>
+</mapper>

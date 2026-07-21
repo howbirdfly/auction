@@ -12,6 +12,7 @@ import {
   fetchUser,
   fetchUserAuctionHistory,
   fetchUsers,
+  fetchWalletTransactions,
   rechargeUser,
   registerForAuction,
   updateUser,
@@ -46,9 +47,13 @@ const state = {
   userAuctionHistory: null,
   userAuctionHistoryUserId: null,
   userAuctionHistoryLoading: false,
+  walletTransactions: [],
+  walletTransactionsUserId: null,
+  walletTransactionsLoading: false,
   profileHistoryTab: "created",
   profileEditorOpen: false,
   profileRechargeOpen: false,
+  profileWalletOpen: false,
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
@@ -124,6 +129,30 @@ function formatDateTime(value) {
   });
 }
 
+function getWalletTransactionTitle(transaction) {
+  const titles = {
+    RECHARGE: "账户充值",
+    DEPOSIT_LOCK: "冻结报名保证金",
+    DEPOSIT_RELEASE: "退回报名保证金",
+    BID_FREEZE: "冻结领先出价",
+    OUTBID_RELEASE: "被反超后释放金额",
+    BID_SETTLEMENT: "成交扣款",
+    DEPOSIT_SETTLEMENT_RELEASE: "结算退回保证金",
+  };
+  return titles[transaction.transactionType] || transaction.transactionType;
+}
+
+function formatSignedPrice(value) {
+  const amount = Number(value || 0);
+  if (amount > 0) {
+    return `+${formatPrice(amount).slice(1)}`;
+  }
+  if (amount < 0) {
+    return `-${formatPrice(Math.abs(amount)).slice(1)}`;
+  }
+  return formatPrice(0);
+}
+
 function setFeedback(message, isError = false) {
   state.feedback = message;
   state.feedbackError = isError;
@@ -180,6 +209,7 @@ function setCurrentUser(userId) {
   state.currentUserId = userId;
   syncCurrentUser();
   invalidateUserAuctionHistory();
+  invalidateWalletTransactions();
   renderPage();
   if (state.activeTab === "profile") {
     refreshUserAuctionHistory(true);
@@ -202,12 +232,26 @@ function invalidateUserAuctionHistory() {
   state.userAuctionHistoryUserId = null;
 }
 
+function invalidateWalletTransactions() {
+  state.walletTransactions = [];
+  state.walletTransactionsUserId = null;
+  state.walletTransactionsLoading = false;
+}
+
 function getCurrentUserAuctionHistory() {
   const currentUser = getCurrentUser();
   if (!currentUser || state.userAuctionHistoryUserId !== currentUser.userId) {
     return null;
   }
   return state.userAuctionHistory;
+}
+
+function getCurrentWalletTransactions() {
+  const currentUser = getCurrentUser();
+  if (!currentUser || state.walletTransactionsUserId !== currentUser.userId) {
+    return [];
+  }
+  return state.walletTransactions;
 }
 
 async function refreshUserAuctionHistory(force = false) {
@@ -240,6 +284,40 @@ async function refreshUserAuctionHistory(force = false) {
   } finally {
     state.userAuctionHistoryLoading = false;
     if (state.activeTab === "profile") {
+      renderPage();
+    }
+  }
+}
+
+async function refreshWalletTransactions(force = false) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    invalidateWalletTransactions();
+    return;
+  }
+
+  if (!force && state.walletTransactionsUserId === currentUser.userId && state.walletTransactions.length) {
+    return;
+  }
+
+  state.walletTransactionsLoading = true;
+  if (state.activeTab === "profile" && state.profileWalletOpen) {
+    renderPage();
+  }
+
+  try {
+    const transactions = await fetchWalletTransactions(currentUser.userId);
+    if (getCurrentUser()?.userId === currentUser.userId) {
+      state.walletTransactions = transactions;
+      state.walletTransactionsUserId = currentUser.userId;
+    }
+  } catch (error) {
+    if (state.activeTab === "profile" && state.profileWalletOpen) {
+      setFeedback(error.message, true);
+    }
+  } finally {
+    state.walletTransactionsLoading = false;
+    if (state.activeTab === "profile" && state.profileWalletOpen) {
       renderPage();
     }
   }
@@ -1065,6 +1143,7 @@ function renderProfileView() {
   const createdRooms = getCurrentUserCreatedRooms();
   const createdClosedRooms = sortRooms(createdRooms.filter((room) => room.status === "CLOSED"));
   const auctionHistory = getCurrentUserAuctionHistory();
+  const walletTransactions = getCurrentWalletTransactions();
   const registeredRooms = auctionHistory?.registeredRooms || [];
   const wonRooms = auctionHistory?.wonRooms || [];
   const missedRooms = auctionHistory?.missedRooms || [];
@@ -1110,6 +1189,7 @@ function renderProfileView() {
           </label>
           <div class="profile-action-buttons">
             <button class="ghost-button" id="openProfileRechargeButton">充值</button>
+            <button class="ghost-button" id="openProfileWalletButton">资金明细</button>
             <button class="ghost-button" id="openProfileEditorButton">编辑个人资料</button>
           </div>
         </div>
@@ -1282,6 +1362,71 @@ function renderProfileView() {
           `
           : ""
       }
+      ${
+        state.profileWalletOpen
+          ? `
+            <div class="profile-modal-backdrop" id="profileWalletBackdrop">
+              <section class="profile-modal profile-wallet-modal" role="dialog" aria-modal="true" aria-labelledby="profileWalletTitle">
+                <div class="profile-modal-head">
+                  <div>
+                    <h2 id="profileWalletTitle">资金明细</h2>
+                    <p>这里集中展示充值、保证金冻结与释放、领先出价冻结、被反超释放和成交扣款。</p>
+                  </div>
+                  <button type="button" class="ghost-button profile-modal-close" id="closeProfileWalletButton">关闭</button>
+                </div>
+                <div class="wallet-summary-grid">
+                  <div class="metric-card">
+                    <span>可用余额</span>
+                    <strong>${formatPrice(currentUser.balance)}</strong>
+                  </div>
+                  <div class="metric-card">
+                    <span>冻结金额</span>
+                    <strong>${formatPrice(currentUser.frozenAmount)}</strong>
+                  </div>
+                </div>
+                <div class="wallet-transaction-list">
+                  ${
+                    state.walletTransactionsLoading
+                      ? `<div class="empty-card">正在加载资金明细...</div>`
+                      : walletTransactions.length
+                        ? walletTransactions
+                            .map(
+                              (transaction) => `
+                                <article class="wallet-transaction-item">
+                                  <div class="wallet-transaction-head">
+                                    <div>
+                                      <strong>${getWalletTransactionTitle(transaction)}</strong>
+                                      <p>${transaction.description || "资金变动记录"}</p>
+                                    </div>
+                                    <div class="wallet-transaction-deltas">
+                                      <span class="wallet-delta ${Number(transaction.availableDelta || 0) >= 0 ? "positive" : "negative"}">
+                                        可用 ${formatSignedPrice(transaction.availableDelta)}
+                                      </span>
+                                      <span class="wallet-delta ${Number(transaction.frozenDelta || 0) >= 0 ? "positive" : "negative"}">
+                                        冻结 ${formatSignedPrice(transaction.frozenDelta)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div class="wallet-transaction-meta">
+                                    <span>${formatDateTime(transaction.createdAt)}</span>
+                                    <span>${transaction.referenceId || "系统记录"}</span>
+                                  </div>
+                                  <div class="wallet-transaction-foot">
+                                    <span>可用余额 ${formatPrice(transaction.balanceAfter)}</span>
+                                    <span>冻结余额 ${formatPrice(transaction.frozenAfter)}</span>
+                                  </div>
+                                </article>
+                              `,
+                            )
+                            .join("")
+                        : `<div class="empty-card">当前账号还没有资金流水，先充值或参与一场竞拍看看。</div>`
+                  }
+                </div>
+              </section>
+            </div>
+          `
+          : ""
+      }
     </section>
   `;
 
@@ -1295,14 +1440,24 @@ function renderProfileView() {
   const openProfileEditor = () => {
     state.profileEditorOpen = true;
     state.profileRechargeOpen = false;
+    state.profileWalletOpen = false;
     renderPage();
   };
   const openProfileRecharge = () => {
     state.profileRechargeOpen = true;
     state.profileEditorOpen = false;
+    state.profileWalletOpen = false;
     renderPage();
   };
+  const openProfileWallet = async () => {
+    state.profileWalletOpen = true;
+    state.profileEditorOpen = false;
+    state.profileRechargeOpen = false;
+    renderPage();
+    await refreshWalletTransactions(true);
+  };
   screenEl.querySelector("#openProfileRechargeButton")?.addEventListener("click", openProfileRecharge);
+  screenEl.querySelector("#openProfileWalletButton")?.addEventListener("click", openProfileWallet);
   screenEl.querySelector("#openProfileEditorButton")?.addEventListener("click", openProfileEditor);
   screenEl.querySelector("#profileCardRechargeButton")?.addEventListener("click", openProfileRecharge);
   screenEl.querySelector("#profileCardEditButton")?.addEventListener("click", openProfileEditor);
@@ -1326,6 +1481,17 @@ function renderProfileView() {
       return;
     }
     state.profileRechargeOpen = false;
+    renderPage();
+  });
+  screenEl.querySelector("#closeProfileWalletButton")?.addEventListener("click", () => {
+    state.profileWalletOpen = false;
+    renderPage();
+  });
+  screenEl.querySelector("#profileWalletBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id !== "profileWalletBackdrop") {
+      return;
+    }
+    state.profileWalletOpen = false;
     renderPage();
   });
   screenEl.querySelectorAll("[data-profile-history-tab]").forEach((button) => {
@@ -1744,8 +1910,12 @@ async function handleRecharge(event) {
     syncCurrentUser();
     form.reset();
     state.profileRechargeOpen = false;
+    invalidateWalletTransactions();
     setFeedback(`充值成功，当前可用余额 ${formatPrice(updatedUser.balance)}`);
     renderPage();
+    if (state.activeTab === "profile") {
+      refreshWalletTransactions(true);
+    }
   } catch (error) {
     setFeedback(error.message, true);
   }
@@ -1899,6 +2069,7 @@ bottomNavItems.forEach((item) => {
     state.activeTab = item.dataset.tab;
     state.profileEditorOpen = false;
     state.profileRechargeOpen = false;
+    state.profileWalletOpen = false;
     if (item.dataset.tab !== "home") {
       clearSelectedRoom();
     }

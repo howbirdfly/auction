@@ -55,7 +55,7 @@ public class AuctionQualificationService {
         AuctionRoomRegistration existing = findRegistration(roomId, request.userId());
 
         if (existing == null) {
-            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount);
+            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount, roomId);
             AuctionRoomRegistration registration = new AuctionRoomRegistration(
                     roomId,
                     request.userId().trim(),
@@ -74,11 +74,11 @@ public class AuctionQualificationService {
                 : BigDecimal.ZERO;
         BigDecimal depositDelta = depositAmount.subtract(previousDepositAmount);
         if (existing.getStatus() != AuctionRegistrationStatus.LOCKED) {
-            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount);
+            auctionWalletService.lockDeposit(request.userId().trim(), depositAmount, roomId);
         } else if (depositDelta.compareTo(BigDecimal.ZERO) > 0) {
-            auctionWalletService.lockDeposit(request.userId().trim(), depositDelta);
+            auctionWalletService.lockDeposit(request.userId().trim(), depositDelta, roomId);
         } else if (depositDelta.compareTo(BigDecimal.ZERO) < 0) {
-            auctionWalletService.releaseDeposit(request.userId().trim(), depositDelta.abs());
+            auctionWalletService.releaseDeposit(request.userId().trim(), depositDelta.abs(), roomId);
         }
 
         existing.setNickname(request.nickname().trim());

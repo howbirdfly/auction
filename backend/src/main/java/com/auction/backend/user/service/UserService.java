@@ -5,6 +5,7 @@ import com.auction.backend.user.dto.UpdateUserRequest;
 import com.auction.backend.user.dto.UserLoginRequest;
 import com.auction.backend.user.dto.UserProfileSnapshot;
 import com.auction.backend.user.dto.UserRechargeRequest;
+import com.auction.backend.user.dto.WalletTransactionSnapshot;
 import com.auction.backend.user.mapper.UserAccountMapper;
 import com.auction.backend.user.model.UserAccount;
 import jakarta.annotation.PostConstruct;
@@ -18,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
@@ -30,12 +32,15 @@ public class UserService {
     private final AtomicLong userSequence = new AtomicLong(10000);
     private final UserAccountMapper userAccountMapper;
     private final HotWalletCacheService hotWalletCacheService;
+    private final WalletTransactionService walletTransactionService;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(PASSWORD_STRENGTH);
 
     public UserService(UserAccountMapper userAccountMapper,
-                       HotWalletCacheService hotWalletCacheService) {
+                       HotWalletCacheService hotWalletCacheService,
+                       WalletTransactionService walletTransactionService) {
         this.userAccountMapper = userAccountMapper;
         this.hotWalletCacheService = hotWalletCacheService;
+        this.walletTransactionService = walletTransactionService;
     }
 
     @PostConstruct
@@ -116,7 +121,23 @@ public class UserService {
         userAccount.setUpdatedAt(Instant.now());
         userAccountMapper.updateWallet(userAccount);
         hotWalletCacheService.syncAuthoritativeWallet(userAccount);
+        walletTransactionService.record(
+                userAccount,
+                "RECHARGE",
+                request.amount(),
+                BigDecimal.ZERO,
+                "USER_ACCOUNT",
+                userId,
+                "账户充值",
+                "RECHARGE:" + userId + ":" + UUID.randomUUID()
+        );
         return toSnapshot(userAccount);
+    }
+
+    @Transactional(readOnly = true)
+    public List<WalletTransactionSnapshot> listWalletTransactions(String userId) {
+        findUser(userId);
+        return walletTransactionService.listByUserId(userId);
     }
 
     private UserAccount findUser(String userId) {

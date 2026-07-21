@@ -71,6 +71,10 @@ export function fetchUserAuctionHistory(userId) {
   return request(`/users/${userId}/auction-history`);
 }
 
+export function fetchWalletTransactions(userId) {
+  return request(`/users/${userId}/wallet-transactions`);
+}
+
 export function updateUser(userId, form) {
   return request(`/users/${userId}`, {
     method: "PUT",

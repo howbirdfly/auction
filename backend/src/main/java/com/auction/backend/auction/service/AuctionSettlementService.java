@@ -63,7 +63,11 @@ public class AuctionSettlementService {
                     .toList());
 
             if (!log.isWinnerFundsSettled() && shouldConsumeWinnerFunds(room, registrations)) {
-                auctionWalletService.consumeWinningBidOnSettlement(room.getLeaderUserId(), room.getCurrentPrice());
+                auctionWalletService.consumeWinningBidOnSettlement(
+                        room.getLeaderUserId(),
+                        room.getCurrentPrice(),
+                        room.getRoomId()
+                );
                 auctionSettlementLogMapper.markWinnerFundsSettled(room.getRoomId(), Instant.now());
                 log.setWinnerFundsSettled(true);
             }
@@ -135,7 +139,11 @@ public class AuctionSettlementService {
                 continue;
             }
 
-            auctionWalletService.releaseDepositOnSettlement(registration.getUserId(), registration.getDepositAmount());
+            auctionWalletService.releaseDepositOnSettlement(
+                    registration.getUserId(),
+                    registration.getDepositAmount(),
+                    registration.getRoomId()
+            );
             registration.setStatus(AuctionRegistrationStatus.RELEASED);
             registration.setUpdatedAt(now);
             auctionRoomRegistrationMapper.updateForRegistration(registration);

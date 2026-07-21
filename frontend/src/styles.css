@@ -634,6 +634,80 @@ button {
   gap: 12px;
 }
 
+.wallet-summary-grid,
+.wallet-transaction-list,
+.wallet-transaction-item,
+.wallet-transaction-deltas {
+  display: grid;
+  gap: 12px;
+}
+
+.wallet-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.profile-wallet-modal {
+  max-height: min(82vh, 760px);
+}
+
+.wallet-transaction-item {
+  padding: 14px;
+  border-radius: 20px;
+  background: #f8fafe;
+  border: 1px solid rgba(32, 36, 44, 0.06);
+}
+
+.wallet-transaction-head,
+.wallet-transaction-meta,
+.wallet-transaction-foot {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.wallet-transaction-head {
+  align-items: flex-start;
+}
+
+.wallet-transaction-head strong,
+.wallet-transaction-head p,
+.wallet-transaction-meta span,
+.wallet-transaction-foot span {
+  display: block;
+}
+
+.wallet-transaction-head p,
+.wallet-transaction-meta,
+.wallet-transaction-foot {
+  margin: 6px 0 0;
+  color: #7d8696;
+}
+
+.wallet-transaction-deltas {
+  justify-items: end;
+  min-width: 112px;
+}
+
+.wallet-delta {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.wallet-delta.positive {
+  color: #0f766e;
+}
+
+.wallet-delta.negative {
+  color: #c2410c;
+}
+
+.wallet-transaction-meta,
+.wallet-transaction-foot {
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+}
+
 .profile-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1213,5 +1287,9 @@ button {
 
   .bottom-nav {
     width: min(calc(100% - 30px), 400px);
+  }
+
+  .wallet-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

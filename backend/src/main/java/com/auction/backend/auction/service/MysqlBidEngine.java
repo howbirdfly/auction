@@ -63,7 +63,14 @@ public class MysqlBidEngine implements BidEngine {
         long nextVersion = room.getVersion() + 1;
         String previousLeaderUserId = room.getLeaderUserId();
         BigDecimal previousAmount = room.hasLeader() ? room.getCurrentPrice() : BigDecimal.ZERO;
-        auctionWalletService.reserveBid(request.userId(), request.amount(), previousLeaderUserId, previousAmount);
+        auctionWalletService.reserveBid(
+                request.userId(),
+                request.amount(),
+                previousLeaderUserId,
+                previousAmount,
+                roomId,
+                request.requestId()
+        );
         room.setCurrentPrice(request.amount());
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());

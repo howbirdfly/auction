@@ -50,7 +50,9 @@ public class HotBidPersistenceStore {
                 message.userId(),
                 message.amount(),
                 message.previousLeaderUserId(),
-                message.previousAmount()
+                message.previousAmount(),
+                message.roomId(),
+                message.requestId()
         );
 
         AuctionRoom room = auctionRoomReadService.findRoom(message.roomId());

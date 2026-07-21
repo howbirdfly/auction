@@ -7,6 +7,7 @@ import com.auction.backend.user.dto.UserAuctionHistorySnapshot;
 import com.auction.backend.user.dto.UserLoginRequest;
 import com.auction.backend.user.dto.UserProfileSnapshot;
 import com.auction.backend.user.dto.UserRechargeRequest;
+import com.auction.backend.user.dto.WalletTransactionSnapshot;
 import com.auction.backend.user.service.UserAuctionHistoryService;
 import com.auction.backend.user.service.UserService;
 import jakarta.validation.Valid;
@@ -46,6 +47,11 @@ public class UserController {
     @GetMapping("/{userId}/auction-history")
     public ApiResponse<UserAuctionHistorySnapshot> getAuctionHistory(@PathVariable String userId) {
         return ApiResponse.success(userAuctionHistoryService.getHistory(userId));
+    }
+
+    @GetMapping("/{userId}/wallet-transactions")
+    public ApiResponse<List<WalletTransactionSnapshot>> getWalletTransactions(@PathVariable String userId) {
+        return ApiResponse.success(userService.listWalletTransactions(userId));
     }
 
     @PostMapping("/register")

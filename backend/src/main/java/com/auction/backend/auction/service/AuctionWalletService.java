@@ -6,6 +6,7 @@ import com.auction.backend.auction.model.AuctionRoomRegistration;
 import com.auction.backend.user.mapper.UserAccountMapper;
 import com.auction.backend.user.model.UserAccount;
 import com.auction.backend.user.service.HotWalletCacheService;
+import com.auction.backend.user.service.WalletTransactionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,13 +22,16 @@ public class AuctionWalletService {
     private final UserAccountMapper userAccountMapper;
     private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
     private final HotWalletCacheService hotWalletCacheService;
+    private final WalletTransactionService walletTransactionService;
 
     public AuctionWalletService(UserAccountMapper userAccountMapper,
                                 AuctionRoomRegistrationMapper auctionRoomRegistrationMapper,
-                                HotWalletCacheService hotWalletCacheService) {
+                                HotWalletCacheService hotWalletCacheService,
+                                WalletTransactionService walletTransactionService) {
         this.userAccountMapper = userAccountMapper;
         this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
         this.hotWalletCacheService = hotWalletCacheService;
+        this.walletTransactionService = walletTransactionService;
     }
 
     @Transactional(readOnly = true)
@@ -48,7 +52,7 @@ public class AuctionWalletService {
     }
 
     @Transactional
-    public void lockDeposit(String account, BigDecimal amount) {
+    public void lockDeposit(String account, BigDecimal amount, String roomId) {
         if (safeAmount(amount).compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
@@ -58,24 +62,56 @@ public class AuctionWalletService {
         userAccount.setFrozenAmount(userAccount.getFrozenAmount().add(amount));
         userAccount.setUpdatedAt(Instant.now());
         persistWallet(userAccount, true);
+        walletTransactionService.record(
+                userAccount,
+                "DEPOSIT_LOCK",
+                amount.negate(),
+                amount,
+                "AUCTION_ROOM",
+                roomId,
+                "报名竞拍并冻结保证金",
+                "DEPOSIT_LOCK:" + roomId + ":" + account + ":" + normalizeAmount(amount)
+        );
     }
 
     @Transactional
-    public void releaseDeposit(String account, BigDecimal amount) {
-        releaseFunds(account, amount, true, true);
+    public void releaseDeposit(String account, BigDecimal amount, String roomId) {
+        releaseFunds(
+                account,
+                amount,
+                true,
+                true,
+                "DEPOSIT_RELEASE",
+                "AUCTION_ROOM",
+                roomId,
+                "报名保证金释放",
+                "DEPOSIT_RELEASE:" + roomId + ":" + account + ":" + normalizeAmount(amount)
+        );
     }
 
     @Transactional
     public void reserveBid(String bidderAccount,
                            BigDecimal bidAmount,
                            String previousLeaderAccount,
-                           BigDecimal previousAmount) {
+                           BigDecimal previousAmount,
+                           String roomId,
+                           String requestId) {
         BigDecimal safePreviousAmount = safeAmount(previousAmount);
         if (previousLeaderAccount != null
                 && !previousLeaderAccount.isBlank()
                 && !previousLeaderAccount.equals(bidderAccount)
                 && safePreviousAmount.compareTo(BigDecimal.ZERO) > 0) {
-            releaseFunds(previousLeaderAccount, safePreviousAmount, true, true);
+            releaseFunds(
+                    previousLeaderAccount,
+                    safePreviousAmount,
+                    true,
+                    true,
+                    "OUTBID_RELEASE",
+                    "AUCTION_ROOM",
+                    roomId,
+                    "被反超后释放冻结出价金额",
+                    "OUTBID_RELEASE:" + roomId + ":" + requestId + ":" + previousLeaderAccount
+            );
         }
 
         UserAccount bidderAccountRow = loadWalletForMutation(bidderAccount);
@@ -91,19 +127,41 @@ public class AuctionWalletService {
         bidderAccountRow.setFrozenAmount(bidderAccountRow.getFrozenAmount().add(required));
         bidderAccountRow.setUpdatedAt(Instant.now());
         persistWallet(bidderAccountRow, true);
+        walletTransactionService.record(
+                bidderAccountRow,
+                "BID_FREEZE",
+                required.negate(),
+                required,
+                "AUCTION_ROOM",
+                roomId,
+                "出价后冻结领先金额",
+                "BID_FREEZE:" + roomId + ":" + requestId + ":" + bidderAccount
+        );
     }
 
     @Transactional
     public void applyHotBidReservation(String bidderAccount,
                                        BigDecimal bidAmount,
                                        String previousLeaderAccount,
-                                       BigDecimal previousAmount) {
+                                       BigDecimal previousAmount,
+                                       String roomId,
+                                       String requestId) {
         BigDecimal safePreviousAmount = safeAmount(previousAmount);
         if (previousLeaderAccount != null
                 && !previousLeaderAccount.isBlank()
                 && !previousLeaderAccount.equals(bidderAccount)
                 && safePreviousAmount.compareTo(BigDecimal.ZERO) > 0) {
-            releaseFunds(previousLeaderAccount, safePreviousAmount, false, false);
+            releaseFunds(
+                    previousLeaderAccount,
+                    safePreviousAmount,
+                    false,
+                    false,
+                    "OUTBID_RELEASE",
+                    "AUCTION_ROOM",
+                    roomId,
+                    "被反超后释放冻结出价金额",
+                    "OUTBID_RELEASE:" + roomId + ":" + requestId + ":" + previousLeaderAccount
+            );
         }
 
         UserAccount bidderAccountRow = findUserByAccountForUpdate(bidderAccount);
@@ -118,6 +176,16 @@ public class AuctionWalletService {
         bidderAccountRow.setFrozenAmount(bidderAccountRow.getFrozenAmount().add(required));
         bidderAccountRow.setUpdatedAt(Instant.now());
         persistWallet(bidderAccountRow, false);
+        walletTransactionService.record(
+                bidderAccountRow,
+                "BID_FREEZE",
+                required.negate(),
+                required,
+                "AUCTION_ROOM",
+                roomId,
+                "出价后冻结领先金额",
+                "BID_FREEZE:" + roomId + ":" + requestId + ":" + bidderAccount
+        );
     }
 
     @Transactional
@@ -132,7 +200,7 @@ public class AuctionWalletService {
         );
 
         if (winnerHadLockedRegistration && safeAmount(finalPrice).compareTo(BigDecimal.ZERO) > 0) {
-            consumeFrozenFunds(winnerAccount, finalPrice, false, true);
+            consumeWinningBidOnSettlement(winnerAccount, finalPrice, roomId);
         }
 
         Instant now = Instant.now();
@@ -141,7 +209,7 @@ public class AuctionWalletService {
                 continue;
             }
 
-            releaseFunds(registration.getUserId(), registration.getDepositAmount(), false, true);
+            releaseDepositOnSettlement(registration.getUserId(), registration.getDepositAmount(), roomId);
             registration.setStatus(AuctionRegistrationStatus.RELEASED);
             registration.setUpdatedAt(now);
             auctionRoomRegistrationMapper.updateForRegistration(registration);
@@ -154,19 +222,44 @@ public class AuctionWalletService {
     }
 
     @Transactional
-    public void consumeWinningBidOnSettlement(String account, BigDecimal amount) {
-        consumeFrozenFunds(account, amount, false, true);
+    public void consumeWinningBidOnSettlement(String account, BigDecimal amount, String roomId) {
+        consumeFrozenFunds(
+                account,
+                amount,
+                false,
+                true,
+                "BID_SETTLEMENT",
+                "AUCTION_ROOM",
+                roomId,
+                "竞拍成交后扣除最终成交价",
+                "BID_SETTLEMENT:" + roomId + ":" + account
+        );
     }
 
     @Transactional
-    public void releaseDepositOnSettlement(String account, BigDecimal amount) {
-        releaseFunds(account, amount, false, true);
+    public void releaseDepositOnSettlement(String account, BigDecimal amount, String roomId) {
+        releaseFunds(
+                account,
+                amount,
+                false,
+                true,
+                "DEPOSIT_SETTLEMENT_RELEASE",
+                "AUCTION_ROOM",
+                roomId,
+                "结算完成后退回报名保证金",
+                "DEPOSIT_SETTLEMENT_RELEASE:" + roomId + ":" + account
+        );
     }
 
     private void releaseFunds(String account,
                               BigDecimal amount,
                               boolean useHotCache,
-                              boolean syncRedis) {
+                              boolean syncRedis,
+                              String transactionType,
+                              String referenceType,
+                              String referenceId,
+                              String description,
+                              String businessKey) {
         if (safeAmount(amount).compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
@@ -183,12 +276,27 @@ public class AuctionWalletService {
         userAccount.setBalance(userAccount.getBalance().add(releasable));
         userAccount.setUpdatedAt(Instant.now());
         persistWallet(userAccount, syncRedis);
+        walletTransactionService.record(
+                userAccount,
+                transactionType,
+                releasable,
+                releasable.negate(),
+                referenceType,
+                referenceId,
+                description,
+                businessKey
+        );
     }
 
     private void consumeFrozenFunds(String account,
                                     BigDecimal amount,
                                     boolean useHotCache,
-                                    boolean syncRedis) {
+                                    boolean syncRedis,
+                                    String transactionType,
+                                    String referenceType,
+                                    String referenceId,
+                                    String description,
+                                    String businessKey) {
         if (safeAmount(amount).compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
@@ -204,6 +312,16 @@ public class AuctionWalletService {
         userAccount.setFrozenAmount(userAccount.getFrozenAmount().subtract(consumable));
         userAccount.setUpdatedAt(Instant.now());
         persistWallet(userAccount, syncRedis);
+        walletTransactionService.record(
+                userAccount,
+                transactionType,
+                BigDecimal.ZERO,
+                consumable.negate(),
+                referenceType,
+                referenceId,
+                description,
+                businessKey
+        );
     }
 
     private void ensureAvailableBalance(UserAccount userAccount, BigDecimal amount, String message) {
@@ -253,5 +371,9 @@ public class AuctionWalletService {
 
     private BigDecimal safeAmount(BigDecimal amount) {
         return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private String normalizeAmount(BigDecimal amount) {
+        return safeAmount(amount).stripTrailingZeros().toPlainString();
     }
 }
