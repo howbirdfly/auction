@@ -16,6 +16,7 @@ public class AuctionCacheProperties {
     private Duration hotRoomBuffer = Duration.ofMinutes(10);
     private int hotAccessThreshold = 10;
     private Duration bidLockTtl = Duration.ofSeconds(5);
+    private Duration walletTtl = Duration.ofHours(12);
 
     public boolean isEnabled() {
         return enabled;
@@ -71,5 +72,13 @@ public class AuctionCacheProperties {
 
     public void setBidLockTtl(Duration bidLockTtl) {
         this.bidLockTtl = bidLockTtl;
+    }
+
+    public Duration getWalletTtl() {
+        return walletTtl;
+    }
+
+    public void setWalletTtl(Duration walletTtl) {
+        this.walletTtl = walletTtl;
     }
 }

@@ -29,10 +29,13 @@ public class UserService {
 
     private final AtomicLong userSequence = new AtomicLong(10000);
     private final UserAccountMapper userAccountMapper;
+    private final HotWalletCacheService hotWalletCacheService;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(PASSWORD_STRENGTH);
 
-    public UserService(UserAccountMapper userAccountMapper) {
+    public UserService(UserAccountMapper userAccountMapper,
+                       HotWalletCacheService hotWalletCacheService) {
         this.userAccountMapper = userAccountMapper;
+        this.hotWalletCacheService = hotWalletCacheService;
     }
 
     @PostConstruct
@@ -112,6 +115,7 @@ public class UserService {
         userAccount.setBalance(userAccount.getBalance().add(request.amount()));
         userAccount.setUpdatedAt(Instant.now());
         userAccountMapper.updateWallet(userAccount);
+        hotWalletCacheService.syncAuthoritativeWallet(userAccount);
         return toSnapshot(userAccount);
     }
 
@@ -120,7 +124,7 @@ public class UserService {
         if (userAccount == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found");
         }
-        return userAccount;
+        return hotWalletCacheService.overlayWallet(userAccount);
     }
 
     private void validateAccountAvailable(String account) {
@@ -130,16 +134,17 @@ public class UserService {
     }
 
     private UserProfileSnapshot toSnapshot(UserAccount userAccount) {
+        UserAccount displayedUserAccount = hotWalletCacheService.overlayWallet(userAccount);
         return new UserProfileSnapshot(
-                userAccount.getUserId(),
-                userAccount.getAccount(),
-                userAccount.getNickname(),
-                userAccount.getAvatarUrl(),
-                userAccount.getBio(),
-                userAccount.getBalance(),
-                userAccount.getFrozenAmount(),
-                userAccount.getCreatedAt(),
-                userAccount.getUpdatedAt()
+                displayedUserAccount.getUserId(),
+                displayedUserAccount.getAccount(),
+                displayedUserAccount.getNickname(),
+                displayedUserAccount.getAvatarUrl(),
+                displayedUserAccount.getBio(),
+                displayedUserAccount.getBalance(),
+                displayedUserAccount.getFrozenAmount(),
+                displayedUserAccount.getCreatedAt(),
+                displayedUserAccount.getUpdatedAt()
         );
     }
 

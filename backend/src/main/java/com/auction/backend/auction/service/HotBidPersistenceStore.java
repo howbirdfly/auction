@@ -16,13 +16,16 @@ public class HotBidPersistenceStore {
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final AuctionRoomReadService auctionRoomReadService;
     private final AuctionRoomMapper auctionRoomMapper;
+    private final AuctionWalletService auctionWalletService;
 
     public HotBidPersistenceStore(AuctionBidRecordMapper auctionBidRecordMapper,
                                   AuctionRoomReadService auctionRoomReadService,
-                                  AuctionRoomMapper auctionRoomMapper) {
+                                  AuctionRoomMapper auctionRoomMapper,
+                                  AuctionWalletService auctionWalletService) {
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
+        this.auctionWalletService = auctionWalletService;
     }
 
     @Transactional
@@ -40,6 +43,13 @@ public class HotBidPersistenceStore {
                 message.roomVersion(),
                 message.bidTime()
         ));
+
+        auctionWalletService.applyHotBidReservation(
+                message.userId(),
+                message.amount(),
+                message.previousLeaderUserId(),
+                message.previousAmount()
+        );
 
         AuctionRoom room = auctionRoomReadService.findRoom(message.roomId());
         room.setCurrentPrice(message.amount());

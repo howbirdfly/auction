@@ -6,6 +6,7 @@ import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.dto.BidRequest;
 import com.auction.backend.auction.model.AuctionRoom;
 import com.auction.backend.auction.model.AuctionStatus;
+import com.auction.backend.user.service.HotWalletCacheService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,6 +35,7 @@ public class RedisBidEngine implements BidEngine {
     private final AuctionQualificationService auctionQualificationService;
     private final HotBidPersistenceGateway hotBidPersistenceGateway;
     private final AuctionWalletService auctionWalletService;
+    private final HotWalletCacheService hotWalletCacheService;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionCacheService auctionCacheService,
@@ -42,7 +44,8 @@ public class RedisBidEngine implements BidEngine {
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
                           HotBidPersistenceGateway hotBidPersistenceGateway,
-                          AuctionWalletService auctionWalletService) {
+                          AuctionWalletService auctionWalletService,
+                          HotWalletCacheService hotWalletCacheService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionCacheService = auctionCacheService;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -51,6 +54,7 @@ public class RedisBidEngine implements BidEngine {
         this.auctionQualificationService = auctionQualificationService;
         this.hotBidPersistenceGateway = hotBidPersistenceGateway;
         this.auctionWalletService = auctionWalletService;
+        this.hotWalletCacheService = hotWalletCacheService;
         DefaultRedisScript<String> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
         script.setResultType(String.class);
@@ -62,20 +66,21 @@ public class RedisBidEngine implements BidEngine {
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoomSnapshot cachedRoom = auctionCacheService.getRoom(roomId)
                 .orElseGet(() -> prewarmHotRoomState(roomId));
-        validateRoomOpen(cachedRoom, Instant.now());
+        Instant now = Instant.now();
+        validateRoomOpen(cachedRoom, now);
 
         AuctionRoom qualificationRoom = auctionRoomReadService.findRoom(roomId);
         auctionQualificationService.assertEligibleToBid(qualificationRoom, request.userId());
-        String expectedPreviousLeaderUserId = !cachedRoom.recentBids().isEmpty() ? cachedRoom.recentBids().get(0).userId() : null;
-        BigDecimal expectedPreviousAmount = !cachedRoom.recentBids().isEmpty() ? cachedRoom.recentBids().get(0).amount() : BigDecimal.ZERO;
-        auctionWalletService.assertCanReserveBid(
-                request.userId(),
-                request.amount(),
-                expectedPreviousLeaderUserId,
-                expectedPreviousAmount
-        );
 
-        long nowMillis = Instant.now().toEpochMilli();
+        String expectedPreviousLeaderUserId = !cachedRoom.recentBids().isEmpty()
+                ? cachedRoom.recentBids().get(0).userId()
+                : null;
+        hotWalletCacheService.prewarmAccountIfNeeded(request.userId());
+        if (expectedPreviousLeaderUserId != null && !expectedPreviousLeaderUserId.isBlank()) {
+            hotWalletCacheService.prewarmAccountIfNeeded(expectedPreviousLeaderUserId);
+        }
+
+        long nowMillis = now.toEpochMilli();
         String result = executeHotBidScript(roomId, request, nowMillis);
         if (result != null && result.startsWith("ERR|ROOM_MISSING")) {
             prewarmHotRoomState(roomId);
@@ -83,27 +88,23 @@ public class RedisBidEngine implements BidEngine {
         }
 
         HotBidResult hotBidResult = parseHotBidResult(roomId, result);
-        auctionWalletService.reserveBid(
-                request.userId(),
-                request.amount(),
-                hotBidResult.previousLeaderUserId(),
-                hotBidResult.previousAmount()
-        );
 
         AuctionRoom room = auctionRoomReadService.findRoom(roomId);
         Instant bidTime = Instant.ofEpochMilli(nowMillis);
-        String eventId = UUID.randomUUID().toString();
         room.setCurrentPrice(request.amount());
         room.setLeaderUserId(request.userId());
         room.setLeaderNickname(request.nickname());
         room.setEndsAt(Instant.ofEpochMilli(hotBidResult.endsAtEpochMilli()));
         room.setVersion(hotBidResult.roomVersion());
+
         hotBidPersistenceGateway.persist(new HotBidPersistenceMessage(
-                eventId,
+                UUID.randomUUID().toString(),
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
                 request.amount(),
+                hotBidResult.previousLeaderUserId(),
+                hotBidResult.previousAmount(),
                 hotBidResult.roomVersion(),
                 bidTime,
                 room.getEndsAt(),
@@ -158,7 +159,9 @@ public class RedisBidEngine implements BidEngine {
                 request.userId(),
                 request.nickname(),
                 request.amount().toPlainString(),
-                Long.toString(auctionCacheProperties.getHotRoomBuffer().toSeconds())
+                Long.toString(auctionCacheProperties.getHotRoomBuffer().toSeconds()),
+                hotWalletCacheService.walletKeyPrefix(),
+                Long.toString(hotWalletCacheService.walletTtlSeconds())
         );
     }
 
@@ -200,7 +203,18 @@ public class RedisBidEngine implements BidEngine {
                             "bid must be greater than or equal to " + minBid
                     );
                 }
-                default -> throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "redis bid engine is unavailable");
+                case "BIDDER_WALLET_MISSING" -> throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "hot wallet cache is not ready"
+                );
+                case "INSUFFICIENT_FUNDS" -> throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "余额不足，请先充值后再出价"
+                );
+                default -> throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "redis bid engine is unavailable"
+                );
             }
         }
 

@@ -9,6 +9,8 @@ local userId = ARGV[3]
 local nickname = ARGV[4]
 local amount = tonumber(ARGV[5])
 local hotBufferSeconds = tonumber(ARGV[6])
+local walletKeyPrefix = ARGV[7]
+local walletTtlSeconds = tonumber(ARGV[8])
 
 if redis.call("EXISTS", stateKey) == 0 then
     return "ERR|ROOM_MISSING"
@@ -35,6 +37,21 @@ if bidCount > 0 then
     previousAmount = currentPrice
 end
 
+local bidderWalletKey = walletKeyPrefix .. userId
+if redis.call("EXISTS", bidderWalletKey) == 0 then
+    return "ERR|BIDDER_WALLET_MISSING"
+end
+
+local bidderBalance = tonumber(redis.call("HGET", bidderWalletKey, "balance")) or 0
+local bidderFrozenAmount = tonumber(redis.call("HGET", bidderWalletKey, "frozenAmount")) or 0
+local requiredReserve = amount
+if previousLeaderUserId == userId and bidCount > 0 then
+    requiredReserve = amount - previousAmount
+end
+if requiredReserve < 0 then
+    requiredReserve = 0
+end
+
 local minNextBid = startPrice
 if bidCount > 0 then
     minNextBid = currentPrice + stepPrice
@@ -43,6 +60,35 @@ end
 if amount < minNextBid then
     return "ERR|BID_TOO_LOW|" .. string.format("%.2f", minNextBid)
 end
+
+if bidderBalance < requiredReserve then
+    return "ERR|INSUFFICIENT_FUNDS|" .. string.format("%.2f", requiredReserve)
+end
+
+if previousLeaderUserId ~= "" and previousLeaderUserId ~= userId and previousAmount > 0 then
+    local previousLeaderWalletKey = walletKeyPrefix .. previousLeaderUserId
+    if redis.call("EXISTS", previousLeaderWalletKey) == 1 then
+        local previousLeaderBalance = tonumber(redis.call("HGET", previousLeaderWalletKey, "balance")) or 0
+        local previousLeaderFrozen = tonumber(redis.call("HGET", previousLeaderWalletKey, "frozenAmount")) or 0
+        local updatedPreviousFrozen = previousLeaderFrozen - previousAmount
+        if updatedPreviousFrozen < 0 then
+            updatedPreviousFrozen = 0
+        end
+        redis.call("HSET", previousLeaderWalletKey,
+            "balance", string.format("%.2f", previousLeaderBalance + previousAmount),
+            "frozenAmount", string.format("%.2f", updatedPreviousFrozen),
+            "updatedAtEpochMilli", tostring(nowMillis)
+        )
+        redis.call("EXPIRE", previousLeaderWalletKey, walletTtlSeconds)
+    end
+end
+
+redis.call("HSET", bidderWalletKey,
+    "balance", string.format("%.2f", bidderBalance - requiredReserve),
+    "frozenAmount", string.format("%.2f", bidderFrozenAmount + requiredReserve),
+    "updatedAtEpochMilli", tostring(nowMillis)
+)
+redis.call("EXPIRE", bidderWalletKey, walletTtlSeconds)
 
 local newBidCount = bidCount + 1
 local newMinNextBid = amount + stepPrice

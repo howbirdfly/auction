@@ -49,6 +49,7 @@ auction:
       hot-room-buffer: 10m
       hot-access-threshold: 10
       bid-lock-ttl: 5s
+      wallet-ttl: 12h
   persistence:
     rabbitmq:
       enabled: false

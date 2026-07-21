@@ -11,6 +11,8 @@ public record HotBidPersistenceMessage(
         String userId,
         String nickname,
         BigDecimal amount,
+        String previousLeaderUserId,
+        BigDecimal previousAmount,
         long roomVersion,
         Instant bidTime,
         Instant endsAt,

@@ -21,3 +21,11 @@ frontend/dist/
 .env
 .env.*
 backend/src/main/resources/application-local.yml
+
+# Local test notes
+JMeter压测操作指南.md
+Hot房间压测记录模板.md
+jmeter/
+
+# Local test data
+jmeter-users.csv
