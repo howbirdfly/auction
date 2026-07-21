@@ -932,6 +932,21 @@ function renderPublishView() {
             <input name="startPrice" type="number" min="0.01" step="0.01" placeholder="\u8d77\u62cd\u4ef7" required />
             <input name="stepPrice" type="number" min="0.01" step="0.01" placeholder="加价幅度" required />
           </div>
+          <label class="publish-toggle">
+            <div class="publish-toggle-copy">
+              <strong>开启报名竞拍</strong>
+              <span>开启后，用户需要先冻结保证金才能参与出价。</span>
+            </div>
+            <input name="registrationRequired" type="checkbox" checked />
+          </label>
+          <input
+            name="depositAmount"
+            type="number"
+            min="0"
+            step="0.01"
+            value="99.00"
+            placeholder="保证金金额"
+          />
           <input name="durationSeconds" type="number" min="30" step="1" placeholder="\u6301\u7eed\u65f6\u957f\uff08\u79d2\uff09" required />
           <button type="submit">立即发布房间</button>
         </form>
@@ -939,11 +954,40 @@ function renderPublishView() {
     </section>
   `;
 
-  screenEl.querySelector("#createForm")?.addEventListener("submit", handleCreateRoom);
+  const createForm = screenEl.querySelector("#createForm");
+  createForm?.addEventListener("submit", handleCreateRoom);
   screenEl.querySelector("#uploadRoomCoverButton")?.addEventListener("click", () => {
     screenEl.querySelector("#roomCoverFileInput")?.click();
   });
   screenEl.querySelector("#roomCoverFileInput")?.addEventListener("change", handleRoomCoverSelected);
+  createForm?.elements.registrationRequired?.addEventListener("change", () => {
+    syncPublishDepositFieldState(createForm);
+  });
+  syncPublishDepositFieldState(createForm);
+}
+
+function syncPublishDepositFieldState(form) {
+  if (!form) {
+    return;
+  }
+
+  const registrationCheckbox = form.elements.registrationRequired;
+  const depositInput = form.elements.depositAmount;
+  if (!registrationCheckbox || !depositInput) {
+    return;
+  }
+
+  const enabled = Boolean(registrationCheckbox.checked);
+  depositInput.disabled = !enabled;
+  depositInput.required = enabled;
+  if (!enabled) {
+    depositInput.value = "0.00";
+    return;
+  }
+
+  if (!depositInput.value || Number(depositInput.value) <= 0) {
+    depositInput.value = "99.00";
+  }
 }
 
 function renderProfileView() {
@@ -1348,6 +1392,10 @@ async function handleCreateRoom(event) {
   payload.anchorName = payload.anchorName || currentUser?.nickname || "匿名主播";
   payload.startPrice = Number(payload.startPrice);
   payload.stepPrice = Number(payload.stepPrice);
+  payload.registrationRequired = formData.get("registrationRequired") === "on";
+  payload.depositAmount = payload.registrationRequired
+    ? Number(payload.depositAmount || 0)
+    : 0;
   payload.durationSeconds = Number(payload.durationSeconds);
 
   try {
@@ -1355,7 +1403,10 @@ async function handleCreateRoom(event) {
     form.reset();
     form.elements.anchorName.value = currentUser?.nickname || "";
     form.elements.imageUrl.value = "";
+    form.elements.registrationRequired.checked = true;
+    form.elements.depositAmount.value = "99.00";
     state.draftRoomImageUrl = "";
+    syncPublishDepositFieldState(form);
     setFeedback(`已发布房间 ${room.roomId}`);
     state.activeTab = "home";
     await loadRooms();

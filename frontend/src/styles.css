@@ -742,6 +742,39 @@ button {
   padding: 10px 14px;
 }
 
+.publish-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafe;
+  border: 1px solid rgba(32, 36, 44, 0.06);
+}
+
+.publish-toggle-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.publish-toggle-copy strong {
+  font-size: 0.98rem;
+}
+
+.publish-toggle-copy span {
+  color: #7d8696;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.publish-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #20242c;
+  flex: 0 0 auto;
+}
+
 .bid-row,
 .bid-user-card,
 .history-room-item {
