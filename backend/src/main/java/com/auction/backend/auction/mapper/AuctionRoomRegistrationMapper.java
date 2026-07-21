@@ -15,6 +15,8 @@ public interface AuctionRoomRegistrationMapper {
 
     List<AuctionRoomRegistration> findAllByUserId(@Param("userId") String userId);
 
+    List<String> findClosedRoomIdsWithLockedRegistrations();
+
     int insert(AuctionRoomRegistration registration);
 
     int updateForRegistration(AuctionRoomRegistration registration);

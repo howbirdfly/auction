@@ -14,6 +14,8 @@ public interface AuctionBidRecordMapper {
 
     AuctionBidRecordEntity findByEventId(@Param("eventId") String eventId);
 
+    AuctionBidRecordEntity findByRequestId(@Param("requestId") String requestId);
+
     List<AuctionBidRecordEntity> findLatestByRoomId(@Param("roomId") String roomId, @Param("limit") int limit);
 
     List<AuctionLeaderboardRow> findLeaderboardByRoomId(@Param("roomId") String roomId, @Param("limit") int limit);

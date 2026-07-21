@@ -3,28 +3,19 @@ package com.auction.backend.auction.model;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-public class AuctionBidPersistenceLog {
+public class AuctionSettlementLog {
 
-    private String eventId;
-    private String requestId;
     private String roomId;
-    private String userId;
-    private BigDecimal amount;
+    private String winnerUserId;
+    private BigDecimal finalPrice;
     private String status;
+    private boolean winnerFundsSettled;
+    private boolean depositsReleased;
     private int attemptCount;
     private String lastError;
-    private String payloadJson;
     private Instant createdAt;
     private Instant updatedAt;
-    private Instant persistedAt;
-
-    public String getEventId() {
-        return eventId;
-    }
-
-    public void setEventId(String eventId) {
-        this.eventId = eventId;
-    }
+    private Instant settledAt;
 
     public String getRoomId() {
         return roomId;
@@ -34,28 +25,20 @@ public class AuctionBidPersistenceLog {
         this.roomId = roomId;
     }
 
-    public String getRequestId() {
-        return requestId;
+    public String getWinnerUserId() {
+        return winnerUserId;
     }
 
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
+    public void setWinnerUserId(String winnerUserId) {
+        this.winnerUserId = winnerUserId;
     }
 
-    public String getUserId() {
-        return userId;
+    public BigDecimal getFinalPrice() {
+        return finalPrice;
     }
 
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
-    public BigDecimal getAmount() {
-        return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
+    public void setFinalPrice(BigDecimal finalPrice) {
+        this.finalPrice = finalPrice;
     }
 
     public String getStatus() {
@@ -64,6 +47,22 @@ public class AuctionBidPersistenceLog {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public boolean isWinnerFundsSettled() {
+        return winnerFundsSettled;
+    }
+
+    public void setWinnerFundsSettled(boolean winnerFundsSettled) {
+        this.winnerFundsSettled = winnerFundsSettled;
+    }
+
+    public boolean isDepositsReleased() {
+        return depositsReleased;
+    }
+
+    public void setDepositsReleased(boolean depositsReleased) {
+        this.depositsReleased = depositsReleased;
     }
 
     public int getAttemptCount() {
@@ -82,14 +81,6 @@ public class AuctionBidPersistenceLog {
         this.lastError = lastError;
     }
 
-    public String getPayloadJson() {
-        return payloadJson;
-    }
-
-    public void setPayloadJson(String payloadJson) {
-        this.payloadJson = payloadJson;
-    }
-
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -106,11 +97,11 @@ public class AuctionBidPersistenceLog {
         this.updatedAt = updatedAt;
     }
 
-    public Instant getPersistedAt() {
-        return persistedAt;
+    public Instant getSettledAt() {
+        return settledAt;
     }
 
-    public void setPersistedAt(Instant persistedAt) {
-        this.persistedAt = persistedAt;
+    public void setSettledAt(Instant settledAt) {
+        this.settledAt = settledAt;
     }
 }

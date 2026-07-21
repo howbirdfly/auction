@@ -34,7 +34,7 @@ public class RedisBidEngine implements BidEngine {
     private final RedisScript<String> hotBidScript;
     private final AuctionQualificationService auctionQualificationService;
     private final HotBidPersistenceGateway hotBidPersistenceGateway;
-    private final AuctionWalletService auctionWalletService;
+    private final AuctionSettlementService auctionSettlementService;
     private final HotWalletCacheService hotWalletCacheService;
 
     public RedisBidEngine(AuctionRoomReadService auctionRoomReadService,
@@ -44,7 +44,7 @@ public class RedisBidEngine implements BidEngine {
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
                           HotBidPersistenceGateway hotBidPersistenceGateway,
-                          AuctionWalletService auctionWalletService,
+                          AuctionSettlementService auctionSettlementService,
                           HotWalletCacheService hotWalletCacheService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionCacheService = auctionCacheService;
@@ -53,7 +53,7 @@ public class RedisBidEngine implements BidEngine {
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
         this.hotBidPersistenceGateway = hotBidPersistenceGateway;
-        this.auctionWalletService = auctionWalletService;
+        this.auctionSettlementService = auctionSettlementService;
         this.hotWalletCacheService = hotWalletCacheService;
         DefaultRedisScript<String> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("scripts/auction_hot_bid.lua"));
@@ -99,6 +99,7 @@ public class RedisBidEngine implements BidEngine {
 
         hotBidPersistenceGateway.persist(new HotBidPersistenceMessage(
                 UUID.randomUUID().toString(),
+                request.requestId(),
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
@@ -123,7 +124,7 @@ public class RedisBidEngine implements BidEngine {
         if (now.isAfter(room.endsAt())) {
             AuctionRoom dbRoom = auctionRoomReadService.findRoom(room.roomId());
             auctionRoomReadService.closeRoom(dbRoom);
-            auctionWalletService.settleRoom(dbRoom.getRoomId(), dbRoom.getLeaderUserId(), dbRoom.getCurrentPrice());
+            auctionSettlementService.settle(dbRoom);
             hotRoomManager.clear(room.roomId());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
         }
@@ -192,7 +193,7 @@ public class RedisBidEngine implements BidEngine {
                 case "ROOM_CLOSED", "ROOM_EXPIRED" -> {
                     AuctionRoom dbRoom = auctionRoomReadService.findRoom(roomId);
                     auctionRoomReadService.closeRoom(dbRoom);
-                    auctionWalletService.settleRoom(dbRoom.getRoomId(), dbRoom.getLeaderUserId(), dbRoom.getCurrentPrice());
+                    auctionSettlementService.settle(dbRoom);
                     hotRoomManager.clear(roomId);
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
                 }

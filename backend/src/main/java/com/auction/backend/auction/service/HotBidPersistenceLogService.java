@@ -4,6 +4,7 @@ import com.auction.backend.auction.mapper.AuctionBidPersistenceLogMapper;
 import com.auction.backend.auction.model.AuctionBidPersistenceLog;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 
@@ -13,9 +14,12 @@ public class HotBidPersistenceLogService {
     private static final int MAX_ERROR_LENGTH = 255;
 
     private final AuctionBidPersistenceLogMapper auctionBidPersistenceLogMapper;
+    private final JsonMapper jsonMapper;
 
-    public HotBidPersistenceLogService(AuctionBidPersistenceLogMapper auctionBidPersistenceLogMapper) {
+    public HotBidPersistenceLogService(AuctionBidPersistenceLogMapper auctionBidPersistenceLogMapper,
+                                       JsonMapper jsonMapper) {
         this.auctionBidPersistenceLogMapper = auctionBidPersistenceLogMapper;
+        this.jsonMapper = jsonMapper;
     }
 
     @Transactional
@@ -29,11 +33,13 @@ public class HotBidPersistenceLogService {
 
         AuctionBidPersistenceLog log = new AuctionBidPersistenceLog();
         log.setEventId(message.eventId());
+        log.setRequestId(message.requestId());
         log.setRoomId(message.roomId());
         log.setUserId(message.userId());
         log.setAmount(message.amount());
         log.setStatus("QUEUED");
         log.setAttemptCount(0);
+        log.setPayloadJson(serializeMessage(message));
         log.setCreatedAt(now);
         log.setUpdatedAt(now);
         auctionBidPersistenceLogMapper.insert(log);
@@ -85,5 +91,13 @@ public class HotBidPersistenceLogService {
         return errorMessage.length() <= MAX_ERROR_LENGTH
                 ? errorMessage
                 : errorMessage.substring(0, MAX_ERROR_LENGTH);
+    }
+
+    private String serializeMessage(HotBidPersistenceMessage message) {
+        try {
+            return jsonMapper.writeValueAsString(message);
+        } catch (Exception exception) {
+            return null;
+        }
     }
 }

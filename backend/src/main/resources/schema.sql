@@ -28,6 +28,7 @@ ALTER TABLE auction_room
 CREATE TABLE IF NOT EXISTS auction_bid_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     event_id VARCHAR(64),
+    request_id VARCHAR(64),
     room_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
     nickname VARCHAR(64) NOT NULL,
@@ -40,6 +41,9 @@ ALTER TABLE auction_bid_record
     ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
 
 ALTER TABLE auction_bid_record
+    ADD COLUMN IF NOT EXISTS request_id VARCHAR(64);
+
+ALTER TABLE auction_bid_record
     ADD COLUMN IF NOT EXISTS bid_version BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
@@ -48,18 +52,45 @@ CREATE INDEX IF NOT EXISTS idx_auction_bid_room_time
 CREATE UNIQUE INDEX IF NOT EXISTS uk_auction_bid_event_id
     ON auction_bid_record (event_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uk_auction_bid_request_id
+    ON auction_bid_record (request_id);
+
 CREATE TABLE IF NOT EXISTS auction_bid_persistence_log (
     event_id VARCHAR(64) PRIMARY KEY,
+    request_id VARCHAR(64),
     room_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
     amount DECIMAL(12, 2) NOT NULL,
     status VARCHAR(32) NOT NULL,
     attempt_count INT NOT NULL DEFAULT 0,
     last_error VARCHAR(255),
+    payload_json TEXT,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     persisted_at TIMESTAMP
 );
+
+ALTER TABLE auction_bid_persistence_log
+    ADD COLUMN IF NOT EXISTS request_id VARCHAR(64);
+
+ALTER TABLE auction_bid_persistence_log
+    ADD COLUMN IF NOT EXISTS payload_json TEXT;
+
+CREATE TABLE IF NOT EXISTS auction_bid_request (
+    request_id VARCHAR(64) PRIMARY KEY,
+    room_id VARCHAR(32) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    nickname VARCHAR(64) NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    bid_version BIGINT,
+    error_message VARCHAR(255),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auction_bid_request_room_user
+    ON auction_bid_request (room_id, user_id);
 
 CREATE TABLE IF NOT EXISTS auction_room_registration (
     room_id VARCHAR(32) NOT NULL,
@@ -70,6 +101,20 @@ CREATE TABLE IF NOT EXISTS auction_room_registration (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS auction_settlement_log (
+    room_id VARCHAR(32) PRIMARY KEY,
+    winner_user_id VARCHAR(64),
+    final_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(16) NOT NULL,
+    winner_funds_settled BOOLEAN NOT NULL DEFAULT FALSE,
+    deposits_released BOOLEAN NOT NULL DEFAULT FALSE,
+    attempt_count INT NOT NULL DEFAULT 0,
+    last_error VARCHAR(255),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    settled_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_account (

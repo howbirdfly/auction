@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.auction.mapper.AuctionBidRequestMapper">
+
+    <resultMap id="AuctionBidRequestResultMap" type="AuctionBidRequest">
+        <id property="requestId" column="request_id"/>
+        <result property="roomId" column="room_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="nickname" column="nickname"/>
+        <result property="amount" column="amount"/>
+        <result property="status" column="status"/>
+        <result property="bidVersion" column="bid_version"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findByRequestId" resultMap="AuctionBidRequestResultMap">
+        select request_id, room_id, user_id, nickname, amount, status, bid_version, error_message, created_at, updated_at
+        from auction_bid_request
+        where request_id = #{requestId}
+    </select>
+
+    <insert id="insert" parameterType="AuctionBidRequest">
+        insert into auction_bid_request (
+            request_id,
+            room_id,
+            user_id,
+            nickname,
+            amount,
+            status,
+            bid_version,
+            error_message,
+            created_at,
+            updated_at
+        ) values (
+            #{requestId},
+            #{roomId},
+            #{userId},
+            #{nickname},
+            #{amount},
+            #{status},
+            #{bidVersion},
+            #{errorMessage},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <update id="markSuccess">
+        update auction_bid_request
+        set status = 'SUCCESS',
+            bid_version = #{bidVersion},
+            error_message = null,
+            updated_at = #{updatedAt}
+        where request_id = #{requestId}
+    </update>
+
+    <update id="markFailed">
+        update auction_bid_request
+        set status = 'FAILED',
+            error_message = #{errorMessage},
+            updated_at = #{updatedAt}
+        where request_id = #{requestId}
+    </update>
+</mapper>

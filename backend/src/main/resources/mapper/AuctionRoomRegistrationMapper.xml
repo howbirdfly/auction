@@ -53,6 +53,15 @@
         order by updated_at desc, created_at desc
     </select>
 
+    <select id="findClosedRoomIdsWithLockedRegistrations" resultType="string">
+        select distinct registration.room_id
+        from auction_room_registration registration
+                 inner join auction_room room on room.room_id = registration.room_id
+        where registration.status = 'LOCKED'
+          and room.status = 'CLOSED'
+        order by registration.room_id asc
+    </select>
+
     <insert id="insert" parameterType="AuctionRoomRegistration">
         insert into auction_room_registration (
             room_id,

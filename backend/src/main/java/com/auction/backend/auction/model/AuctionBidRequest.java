@@ -3,27 +3,25 @@ package com.auction.backend.auction.model;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-public class AuctionBidPersistenceLog {
+public class AuctionBidRequest {
 
-    private String eventId;
     private String requestId;
     private String roomId;
     private String userId;
+    private String nickname;
     private BigDecimal amount;
     private String status;
-    private int attemptCount;
-    private String lastError;
-    private String payloadJson;
+    private Long bidVersion;
+    private String errorMessage;
     private Instant createdAt;
     private Instant updatedAt;
-    private Instant persistedAt;
 
-    public String getEventId() {
-        return eventId;
+    public String getRequestId() {
+        return requestId;
     }
 
-    public void setEventId(String eventId) {
-        this.eventId = eventId;
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
     }
 
     public String getRoomId() {
@@ -34,20 +32,20 @@ public class AuctionBidPersistenceLog {
         this.roomId = roomId;
     }
 
-    public String getRequestId() {
-        return requestId;
-    }
-
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
-
     public String getUserId() {
         return userId;
     }
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+
+    public String getNickname() {
+        return nickname;
+    }
+
+    public void setNickname(String nickname) {
+        this.nickname = nickname;
     }
 
     public BigDecimal getAmount() {
@@ -66,28 +64,20 @@ public class AuctionBidPersistenceLog {
         this.status = status;
     }
 
-    public int getAttemptCount() {
-        return attemptCount;
+    public Long getBidVersion() {
+        return bidVersion;
     }
 
-    public void setAttemptCount(int attemptCount) {
-        this.attemptCount = attemptCount;
+    public void setBidVersion(Long bidVersion) {
+        this.bidVersion = bidVersion;
     }
 
-    public String getLastError() {
-        return lastError;
+    public String getErrorMessage() {
+        return errorMessage;
     }
 
-    public void setLastError(String lastError) {
-        this.lastError = lastError;
-    }
-
-    public String getPayloadJson() {
-        return payloadJson;
-    }
-
-    public void setPayloadJson(String payloadJson) {
-        this.payloadJson = payloadJson;
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     public Instant getCreatedAt() {
@@ -104,13 +94,5 @@ public class AuctionBidPersistenceLog {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
-    }
-
-    public Instant getPersistedAt() {
-        return persistedAt;
-    }
-
-    public void setPersistedAt(Instant persistedAt) {
-        this.persistedAt = persistedAt;
     }
 }

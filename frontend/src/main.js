@@ -60,6 +60,7 @@ const state = {
   feedback: "",
   feedbackError: false,
   draftRoomImageUrl: "",
+  bidSubmitting: false,
 };
 
 const app = document.querySelector("#app");
@@ -127,6 +128,13 @@ function setFeedback(message, isError = false) {
   state.feedback = message;
   state.feedbackError = isError;
   renderFeedback();
+}
+
+function createRequestId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `bid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function renderFeedback() {
@@ -581,7 +589,7 @@ function renderBidPanel(room) {
   const bidClosed = isRoomBiddingClosed(room);
   const qualificationPending = roomRequiresQualification(room) && Boolean(currentUser) && !state.selectedRoomQualification;
   const qualificationBlocked = roomRequiresQualification(room) && Boolean(currentUser) && !qualificationPending && !canCurrentUserBid(room);
-  const bidDisabled = bidClosed || qualificationPending || qualificationBlocked;
+  const bidDisabled = bidClosed || qualificationPending || qualificationBlocked || state.bidSubmitting;
   const disabledAttr = bidDisabled ? "disabled" : "";
 
   if (!currentUser) {
@@ -658,7 +666,7 @@ function renderBidPanel(room) {
             <button type="button" class="bid-step-button" data-bid-adjust="1" ${disabledAttr}>+</button>
           </div>
         </div>
-        <button type="submit" ${disabledAttr}>${bidClosed ? "\u7ade\u62cd\u5df2\u7ed3\u675f" : "\u7acb\u5373\u51fa\u4ef7"}</button>
+        <button type="submit" ${disabledAttr}>${bidClosed ? "\u7ade\u62cd\u5df2\u7ed3\u675f" : state.bidSubmitting ? "正在出价..." : "\u7acb\u5373\u51fa\u4ef7"}</button>
       </form>
     </section>
   `;
@@ -1473,7 +1481,7 @@ function syncBidPanelState() {
   const bidClosed = isRoomBiddingClosed(room);
   const qualificationPending = roomRequiresQualification(room) && !state.selectedRoomQualification;
   const qualificationBlocked = roomRequiresQualification(room) && !qualificationPending && !canCurrentUserBid(room);
-  const bidDisabled = bidClosed || qualificationPending || qualificationBlocked;
+  const bidDisabled = bidClosed || qualificationPending || qualificationBlocked || state.bidSubmitting;
   const amountInput = document.querySelector("#bidAmountInput");
   const adjustButtons = document.querySelectorAll("[data-bid-adjust]");
   const submitButtons = bidForm.querySelectorAll('button[type="submit"]');
@@ -1499,6 +1507,8 @@ function syncBidPanelState() {
     submitButton.disabled = bidDisabled;
     if (bidClosed) {
       submitButton.textContent = "竞拍已结束";
+    } else if (state.bidSubmitting) {
+      submitButton.textContent = "正在出价...";
     } else if (qualificationPending) {
       submitButton.textContent = "资格校验中";
     } else if (qualificationBlocked) {
@@ -1787,6 +1797,9 @@ async function handleAvatarSelected(event) {
 
 async function handleBid(event) {
   event.preventDefault();
+  if (state.bidSubmitting) {
+    return;
+  }
   if (!state.selectedRoomId) {
     setFeedback("\u8bf7\u5148\u8fdb\u5165\u4e00\u4e2a\u62cd\u5356\u623f\u95f4", true);
     return;
@@ -1801,6 +1814,7 @@ async function handleBid(event) {
   const formData = new FormData(event.currentTarget);
   const payload = Object.fromEntries(formData.entries());
   payload.amount = Number(payload.amount);
+  payload.requestId = createRequestId();
   payload.userId = currentUser.account;
   payload.nickname = currentUser.nickname;
 
@@ -1816,6 +1830,8 @@ async function handleBid(event) {
   }
 
   try {
+    state.bidSubmitting = true;
+    syncBidPanelState();
     const room = await createBid(state.selectedRoomId, payload);
     await refreshCurrentUser();
     applySelectedRoom(room);
@@ -1825,6 +1841,9 @@ async function handleBid(event) {
     renderPage();
   } catch (error) {
     setFeedback(error.message, true);
+  } finally {
+    state.bidSubmitting = false;
+    syncBidPanelState();
   }
 }
 

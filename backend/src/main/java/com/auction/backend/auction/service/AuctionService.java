@@ -31,26 +31,32 @@ public class AuctionService {
     private final AuctionBroadcastService broadcastService;
     private final AuctionRoomReadService auctionRoomReadService;
     private final BidEngineRouter bidEngineRouter;
+    private final BidRequestIdempotencyService bidRequestIdempotencyService;
     private final HotRoomManager hotRoomManager;
     private final AuctionQualificationService auctionQualificationService;
     private final AuctionWalletService auctionWalletService;
+    private final AuctionSettlementService auctionSettlementService;
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionBroadcastService broadcastService,
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
+                          BidRequestIdempotencyService bidRequestIdempotencyService,
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
-                          AuctionWalletService auctionWalletService) {
+                          AuctionWalletService auctionWalletService,
+                          AuctionSettlementService auctionSettlementService) {
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.broadcastService = broadcastService;
         this.auctionRoomReadService = auctionRoomReadService;
         this.bidEngineRouter = bidEngineRouter;
+        this.bidRequestIdempotencyService = bidRequestIdempotencyService;
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
         this.auctionWalletService = auctionWalletService;
+        this.auctionSettlementService = auctionSettlementService;
     }
 
     @PostConstruct
@@ -127,7 +133,20 @@ public class AuctionService {
 
     @Transactional
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
-        AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
+        BidRequestIdempotencyService.BidRequestDecision decision = bidRequestIdempotencyService.begin(roomId, request);
+        if (!decision.accepted()) {
+            return auctionRoomReadService.getRoom(roomId);
+        }
+
+        AuctionRoomSnapshot snapshot;
+        try {
+            snapshot = bidEngineRouter.placeBid(roomId, request);
+            bidRequestIdempotencyService.markSuccess(request.requestId(), snapshot.version());
+        } catch (ResponseStatusException exception) {
+            bidRequestIdempotencyService.markFailed(request.requestId(), exception.getReason());
+            throw exception;
+        }
+
         if (hotRoomManager.isHot(roomId)) {
             List<AuctionLeaderboardEntry> leaderboard = auctionRoomReadService.getLeaderboard(roomId);
             hotRoomManager.markHot(snapshot, leaderboard);
@@ -153,7 +172,7 @@ public class AuctionService {
 
         expiredRooms.forEach(room -> {
             auctionRoomReadService.closeRoom(room);
-            auctionWalletService.settleRoom(room.getRoomId(), room.getLeaderUserId(), room.getCurrentPrice());
+            auctionSettlementService.settle(room);
             hotRoomManager.clear(room.getRoomId());
         });
 
@@ -181,6 +200,11 @@ public class AuctionService {
             AuctionRoomSnapshot snapshot = auctionRoomReadService.toSnapshot(room, true);
             hotRoomManager.markHot(snapshot, auctionRoomReadService.getLeaderboard(room.getRoomId()));
         });
+    }
+
+    @Scheduled(fixedDelay = 15000)
+    public void compensateSettlements() {
+        auctionSettlementService.compensate();
     }
 
     private String resolveImageUrl(String imageUrl) {

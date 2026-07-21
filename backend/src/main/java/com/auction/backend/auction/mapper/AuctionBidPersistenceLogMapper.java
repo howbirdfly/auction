@@ -21,4 +21,7 @@ public interface AuctionBidPersistenceLogMapper {
 
     int incrementAttemptCount(@Param("eventId") String eventId,
                               @Param("updatedAt") Instant updatedAt);
+
+    java.util.List<AuctionBidPersistenceLog> findPendingForCompensation(@Param("staleBefore") Instant staleBefore,
+                                                                        @Param("limit") int limit);
 }

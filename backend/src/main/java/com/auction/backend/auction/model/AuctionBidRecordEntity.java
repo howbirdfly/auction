@@ -7,6 +7,7 @@ public class AuctionBidRecordEntity {
 
     private Long id;
     private String eventId;
+    private String requestId;
     private String roomId;
     private String userId;
     private String nickname;
@@ -18,6 +19,7 @@ public class AuctionBidRecordEntity {
     }
 
     public AuctionBidRecordEntity(String eventId,
+                                  String requestId,
                                   String roomId,
                                   String userId,
                                   String nickname,
@@ -25,6 +27,7 @@ public class AuctionBidRecordEntity {
                                   Long bidVersion,
                                   Instant bidTime) {
         this.eventId = eventId;
+        this.requestId = requestId;
         this.roomId = roomId;
         this.userId = userId;
         this.nickname = nickname;
@@ -33,12 +36,14 @@ public class AuctionBidRecordEntity {
         this.bidTime = bidTime;
     }
 
-    public AuctionBidRecordEntity(String roomId,
+    public AuctionBidRecordEntity(String requestId,
+                                  String roomId,
                                   String userId,
                                   String nickname,
                                   BigDecimal amount,
                                   Long bidVersion,
                                   Instant bidTime) {
+        this.requestId = requestId;
         this.roomId = roomId;
         this.userId = userId;
         this.nickname = nickname;
@@ -61,6 +66,14 @@ public class AuctionBidRecordEntity {
 
     public void setEventId(String eventId) {
         this.eventId = eventId;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
     }
 
     public String getRoomId() {

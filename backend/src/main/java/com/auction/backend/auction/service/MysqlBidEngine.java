@@ -26,19 +26,22 @@ public class MysqlBidEngine implements BidEngine {
     private final AuctionCacheService auctionCacheService;
     private final AuctionQualificationService auctionQualificationService;
     private final AuctionWalletService auctionWalletService;
+    private final AuctionSettlementService auctionSettlementService;
 
     public MysqlBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionCacheService auctionCacheService,
                           AuctionQualificationService auctionQualificationService,
-                          AuctionWalletService auctionWalletService) {
+                          AuctionWalletService auctionWalletService,
+                          AuctionSettlementService auctionSettlementService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.auctionCacheService = auctionCacheService;
         this.auctionQualificationService = auctionQualificationService;
         this.auctionWalletService = auctionWalletService;
+        this.auctionSettlementService = auctionSettlementService;
     }
 
     @Override
@@ -67,6 +70,7 @@ public class MysqlBidEngine implements BidEngine {
         room.setVersion(nextVersion);
 
         auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
+                request.requestId(),
                 room.getRoomId(),
                 request.userId(),
                 request.nickname(),
@@ -89,7 +93,7 @@ public class MysqlBidEngine implements BidEngine {
 
         if (now.isAfter(room.getEndsAt())) {
             auctionRoomReadService.closeRoom(room);
-            auctionWalletService.settleRoom(room.getRoomId(), room.getLeaderUserId(), room.getCurrentPrice());
+            auctionSettlementService.settle(room);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "auction already closed");
         }
     }

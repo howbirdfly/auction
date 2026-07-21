@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 
 public record BidRequest(
         @NotBlank(message = "cannot be blank")
+        String requestId,
+        @NotBlank(message = "cannot be blank")
         String userId,
         @NotBlank(message = "cannot be blank")
         String nickname,

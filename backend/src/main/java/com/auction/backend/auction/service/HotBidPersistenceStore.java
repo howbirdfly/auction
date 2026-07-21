@@ -30,12 +30,14 @@ public class HotBidPersistenceStore {
 
     @Transactional
     public void persist(HotBidPersistenceMessage message) {
-        if (auctionBidRecordMapper.findByEventId(message.eventId()) != null) {
+        if (auctionBidRecordMapper.findByEventId(message.eventId()) != null
+                || auctionBidRecordMapper.findByRequestId(message.requestId()) != null) {
             return;
         }
 
         auctionBidRecordMapper.insert(new AuctionBidRecordEntity(
                 message.eventId(),
+                message.requestId(),
                 message.roomId(),
                 message.userId(),
                 message.nickname(),

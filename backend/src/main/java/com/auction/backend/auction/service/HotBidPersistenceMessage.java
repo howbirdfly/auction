@@ -7,6 +7,7 @@ import java.time.Instant;
 
 public record HotBidPersistenceMessage(
         String eventId,
+        String requestId,
         String roomId,
         String userId,
         String nickname,

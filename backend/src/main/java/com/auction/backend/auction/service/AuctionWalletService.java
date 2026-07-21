@@ -123,9 +123,7 @@ public class AuctionWalletService {
     @Transactional
     public void settleRoom(String roomId, String winnerAccount, BigDecimal finalPrice) {
         List<AuctionRoomRegistration> registrations = auctionRoomRegistrationMapper.findAllByRoomId(roomId);
-        hotWalletCacheService.syncAccountsToMySql(
-                registrations.stream().map(AuctionRoomRegistration::getUserId).toList()
-        );
+        syncAccountsToMySql(registrations.stream().map(AuctionRoomRegistration::getUserId).toList());
 
         boolean winnerHadLockedRegistration = winnerAccount != null
                 && registrations.stream().anyMatch(registration ->
@@ -148,6 +146,21 @@ public class AuctionWalletService {
             registration.setUpdatedAt(now);
             auctionRoomRegistrationMapper.updateForRegistration(registration);
         }
+    }
+
+    @Transactional
+    public void syncAccountsToMySql(List<String> accounts) {
+        hotWalletCacheService.syncAccountsToMySql(accounts);
+    }
+
+    @Transactional
+    public void consumeWinningBidOnSettlement(String account, BigDecimal amount) {
+        consumeFrozenFunds(account, amount, false, true);
+    }
+
+    @Transactional
+    public void releaseDepositOnSettlement(String account, BigDecimal amount) {
+        releaseFunds(account, amount, false, true);
     }
 
     private void releaseFunds(String account,

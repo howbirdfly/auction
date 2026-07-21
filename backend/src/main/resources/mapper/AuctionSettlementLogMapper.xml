@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.auction.mapper.AuctionSettlementLogMapper">
+
+    <resultMap id="AuctionSettlementLogResultMap" type="AuctionSettlementLog">
+        <id property="roomId" column="room_id"/>
+        <result property="winnerUserId" column="winner_user_id"/>
+        <result property="finalPrice" column="final_price"/>
+        <result property="status" column="status"/>
+        <result property="winnerFundsSettled" column="winner_funds_settled"/>
+        <result property="depositsReleased" column="deposits_released"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="lastError" column="last_error"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="settledAt" column="settled_at"/>
+    </resultMap>
+
+    <select id="findByRoomId" resultMap="AuctionSettlementLogResultMap">
+        select room_id,
+               winner_user_id,
+               final_price,
+               status,
+               winner_funds_settled,
+               deposits_released,
+               attempt_count,
+               last_error,
+               created_at,
+               updated_at,
+               settled_at
+        from auction_settlement_log
+        where room_id = #{roomId}
+    </select>
+
+    <insert id="insert" parameterType="AuctionSettlementLog">
+        insert into auction_settlement_log (
+            room_id,
+            winner_user_id,
+            final_price,
+            status,
+            winner_funds_settled,
+            deposits_released,
+            attempt_count,
+            last_error,
+            created_at,
+            updated_at,
+            settled_at
+        ) values (
+            #{roomId},
+            #{winnerUserId},
+            #{finalPrice},
+            #{status},
+            #{winnerFundsSettled},
+            #{depositsReleased},
+            #{attemptCount},
+            #{lastError},
+            #{createdAt},
+            #{updatedAt},
+            #{settledAt}
+        )
+    </insert>
+
+    <update id="markProcessing">
+        update auction_settlement_log
+        set status = 'PROCESSING',
+            winner_user_id = #{winnerUserId},
+            final_price = #{finalPrice},
+            attempt_count = attempt_count + 1,
+            last_error = null,
+            updated_at = #{updatedAt}
+        where room_id = #{roomId}
+    </update>
+
+    <update id="markWinnerFundsSettled">
+        update auction_settlement_log
+        set winner_funds_settled = true,
+            updated_at = #{updatedAt}
+        where room_id = #{roomId}
+    </update>
+
+    <update id="markDepositsReleased">
+        update auction_settlement_log
+        set deposits_released = true,
+            updated_at = #{updatedAt}
+        where room_id = #{roomId}
+    </update>
+
+    <update id="markSuccess">
+        update auction_settlement_log
+        set status = 'SUCCESS',
+            last_error = null,
+            updated_at = #{updatedAt},
+            settled_at = #{settledAt}
+        where room_id = #{roomId}
+    </update>
+
+    <update id="markFailed">
+        update auction_settlement_log
+        set status = 'FAILED',
+            last_error = #{lastError},
+            updated_at = #{updatedAt}
+        where room_id = #{roomId}
+    </update>
+
+    <select id="findPendingForCompensation" resultMap="AuctionSettlementLogResultMap">
+        select room_id,
+               winner_user_id,
+               final_price,
+               status,
+               winner_funds_settled,
+               deposits_released,
+               attempt_count,
+               last_error,
+               created_at,
+               updated_at,
+               settled_at
+        from auction_settlement_log
+        where status in ('FAILED', 'PENDING')
+           or (status = 'PROCESSING' and updated_at &lt; #{staleBefore})
+        order by updated_at asc
+        limit #{limit}
+    </select>
+</mapper>
