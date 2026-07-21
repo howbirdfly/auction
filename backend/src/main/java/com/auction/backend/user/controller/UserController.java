@@ -3,9 +3,11 @@ package com.auction.backend.user.controller;
 import com.auction.backend.common.ApiResponse;
 import com.auction.backend.user.dto.CreateUserRequest;
 import com.auction.backend.user.dto.UpdateUserRequest;
+import com.auction.backend.user.dto.UserAuctionHistorySnapshot;
 import com.auction.backend.user.dto.UserLoginRequest;
 import com.auction.backend.user.dto.UserProfileSnapshot;
 import com.auction.backend.user.dto.UserRechargeRequest;
+import com.auction.backend.user.service.UserAuctionHistoryService;
 import com.auction.backend.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +25,12 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
+    private final UserAuctionHistoryService userAuctionHistoryService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService,
+                          UserAuctionHistoryService userAuctionHistoryService) {
         this.userService = userService;
+        this.userAuctionHistoryService = userAuctionHistoryService;
     }
 
     @GetMapping
@@ -36,6 +41,11 @@ public class UserController {
     @GetMapping("/{userId}")
     public ApiResponse<UserProfileSnapshot> getUser(@PathVariable String userId) {
         return ApiResponse.success(userService.getUser(userId));
+    }
+
+    @GetMapping("/{userId}/auction-history")
+    public ApiResponse<UserAuctionHistorySnapshot> getAuctionHistory(@PathVariable String userId) {
+        return ApiResponse.success(userAuctionHistoryService.getHistory(userId));
     }
 
     @PostMapping("/register")

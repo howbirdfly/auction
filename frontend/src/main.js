@@ -10,6 +10,7 @@ import {
   fetchRoom,
   fetchRooms,
   fetchUser,
+  fetchUserAuctionHistory,
   fetchUsers,
   rechargeUser,
   registerForAuction,
@@ -42,6 +43,9 @@ const state = {
   users: [],
   currentUserId: localStorage.getItem(CURRENT_USER_STORAGE_KEY) || null,
   currentUser: null,
+  userAuctionHistory: null,
+  userAuctionHistoryUserId: null,
+  userAuctionHistoryLoading: false,
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
@@ -144,6 +148,9 @@ function syncCurrentUser() {
   if (!state.users.length) {
     state.currentUser = null;
     state.currentUserId = null;
+    state.userAuctionHistory = null;
+    state.userAuctionHistoryUserId = null;
+    state.userAuctionHistoryLoading = false;
     localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
     return;
   }
@@ -161,7 +168,11 @@ function syncCurrentUser() {
 function setCurrentUser(userId) {
   state.currentUserId = userId;
   syncCurrentUser();
+  invalidateUserAuctionHistory();
   renderPage();
+  if (state.activeTab === "profile") {
+    refreshUserAuctionHistory(true);
+  }
 }
 
 async function refreshCurrentUser() {
@@ -173,6 +184,54 @@ async function refreshCurrentUser() {
   const updatedUser = await fetchUser(currentUser.userId);
   state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
   syncCurrentUser();
+}
+
+function invalidateUserAuctionHistory() {
+  state.userAuctionHistory = null;
+  state.userAuctionHistoryUserId = null;
+}
+
+function getCurrentUserAuctionHistory() {
+  const currentUser = getCurrentUser();
+  if (!currentUser || state.userAuctionHistoryUserId !== currentUser.userId) {
+    return null;
+  }
+  return state.userAuctionHistory;
+}
+
+async function refreshUserAuctionHistory(force = false) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    invalidateUserAuctionHistory();
+    state.userAuctionHistoryLoading = false;
+    return;
+  }
+
+  if (!force && state.userAuctionHistoryUserId === currentUser.userId && state.userAuctionHistory) {
+    return;
+  }
+
+  state.userAuctionHistoryLoading = true;
+  if (state.activeTab === "profile") {
+    renderPage();
+  }
+
+  try {
+    const history = await fetchUserAuctionHistory(currentUser.userId);
+    if (getCurrentUser()?.userId === currentUser.userId) {
+      state.userAuctionHistory = history;
+      state.userAuctionHistoryUserId = currentUser.userId;
+    }
+  } catch (error) {
+    if (state.activeTab === "profile") {
+      setFeedback(error.message, true);
+    }
+  } finally {
+    state.userAuctionHistoryLoading = false;
+    if (state.activeTab === "profile") {
+      renderPage();
+    }
+  }
 }
 
 function getLiveRooms() {
@@ -993,7 +1052,11 @@ function syncPublishDepositFieldState(form) {
 function renderProfileView() {
   const currentUser = getCurrentUser();
   const createdRooms = getCurrentUserCreatedRooms();
-  const leadingRooms = getCurrentUserLeadingRooms();
+  const createdClosedRooms = sortRooms(createdRooms.filter((room) => room.status === "CLOSED"));
+  const auctionHistory = getCurrentUserAuctionHistory();
+  const registeredRooms = auctionHistory?.registeredRooms || [];
+  const wonRooms = auctionHistory?.wonRooms || [];
+  const missedRooms = auctionHistory?.missedRooms || [];
 
   if (!currentUser) {
     screenEl.innerHTML = `
@@ -1089,50 +1152,50 @@ function renderProfileView() {
           <strong>${createdRooms.length}</strong>
         </div>
         <div class="metric-card">
-          <span>当前领先中</span>
-          <strong>${leadingRooms.length}</strong>
+          <span>报名记录</span>
+          <strong>${state.userAuctionHistoryLoading ? "--" : registeredRooms.length}</strong>
         </div>
         <div class="metric-card">
-          <span>竞拍中房间</span>
-          <strong>${getLiveRooms().length}</strong>
+          <span>拍到的房间</span>
+          <strong>${state.userAuctionHistoryLoading ? "--" : wonRooms.length}</strong>
         </div>
         <div class="metric-card">
-          <span>加入时间</span>
-          <strong>${formatShortTime(currentUser.createdAt)}</strong>
+          <span>未拍到</span>
+          <strong>${state.userAuctionHistoryLoading ? "--" : missedRooms.length}</strong>
         </div>
       </section>
 
-      <section class="room-panel">
-        <div class="section-header compact">
-          <div>
-            <h2>我创建的房间</h2>
-            <p>这里会展示你发布过的竞拍房间。</p>
-          </div>
-        </div>
-        <div class="history-room-list">
-          ${
-            createdRooms.length
-              ? createdRooms.map(renderHistoryRoomItem).join("")
-              : `<div class="empty-card">你还没有创建房间，去底部“发布”试试吧。</div>`
-          }
-        </div>
-      </section>
+      ${renderProfileHistorySection({
+        title: "我创建的已结束房间",
+        description: "这里会展示你发布且已经结束的房间，方便回看成交或流拍结果。",
+        rooms: createdClosedRooms,
+        loading: false,
+        emptyMessage: "你还没有已结束的房间，先去发布一个试试吧。",
+      })}
 
-      <section class="room-panel">
-        <div class="section-header compact">
-          <div>
-            <h2>我当前领先</h2>
-            <p>这里会展示你目前排在第一的竞拍房间。</p>
-          </div>
-        </div>
-        <div class="history-room-list">
-          ${
-            leadingRooms.length
-              ? leadingRooms.map(renderHistoryRoomItem).join("")
-              : `<div class="empty-card">你当前还没有领先中的房间。</div>`
-          }
-        </div>
-      </section>
+      ${renderProfileHistorySection({
+        title: "我报名过的房间",
+        description: "这里会展示你冻结过保证金、正式报名参与过的竞拍房间。",
+        rooms: registeredRooms,
+        loading: state.userAuctionHistoryLoading,
+        emptyMessage: "你还没有报名过任何竞拍房间。",
+      })}
+
+      ${renderProfileHistorySection({
+        title: "我拍到的房间",
+        description: "这些是你在竞拍结束后成功拍到商品的房间。",
+        rooms: wonRooms,
+        loading: state.userAuctionHistoryLoading,
+        emptyMessage: "你暂时还没有拍到过房间里的商品。",
+      })}
+
+      ${renderProfileHistorySection({
+        title: "我参与但未拍到",
+        description: "这些房间你参与过，但最终没有成为最后的成交获胜者。",
+        rooms: missedRooms,
+        loading: state.userAuctionHistoryLoading,
+        emptyMessage: "你当前还没有“参与但未拍到”的房间记录。",
+      })}
 
       <section class="room-panel">
         <div id="profileEditorAnchor"></div>
@@ -1194,6 +1257,28 @@ function renderHistoryRoomItem(room) {
         </div>
       </div>
     </button>
+  `;
+}
+
+function renderProfileHistorySection({ title, description, rooms, loading, emptyMessage }) {
+  return `
+    <section class="room-panel">
+      <div class="section-header compact">
+        <div>
+          <h2>${title}</h2>
+          <p>${description}</p>
+        </div>
+      </div>
+      <div class="history-room-list">
+        ${
+          loading
+            ? `<div class="empty-card">正在加载这部分历史记录...</div>`
+            : rooms.length
+              ? rooms.map(renderHistoryRoomItem).join("")
+              : `<div class="empty-card">${emptyMessage}</div>`
+        }
+      </div>
+    </section>
   `;
 }
 
@@ -1507,6 +1592,7 @@ async function handleUpdateProfile(event) {
     const updatedUser = await updateUser(currentUser.userId, payload);
     state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
     syncCurrentUser();
+    invalidateUserAuctionHistory();
 
     if (state.selectedRoom && state.selectedRoom.leaderNickname === currentUser.nickname) {
       state.selectedRoom.leaderNickname = updatedUser.nickname;
@@ -1520,6 +1606,9 @@ async function handleUpdateProfile(event) {
 
     setFeedback("\u4e2a\u4eba\u8d44\u6599\u5df2\u4fdd\u5b58");
     renderPage();
+    if (state.activeTab === "profile") {
+      refreshUserAuctionHistory(true);
+    }
   } catch (error) {
     setFeedback(error.message, true);
   }
@@ -1682,7 +1771,7 @@ async function refreshRoomsSilently() {
 }
 
 bottomNavItems.forEach((item) => {
-  item.addEventListener("click", () => {
+  item.addEventListener("click", async () => {
     if (!item.dataset.tab) {
       return;
     }
@@ -1691,6 +1780,9 @@ bottomNavItems.forEach((item) => {
       clearSelectedRoom();
     }
     renderPage();
+    if (item.dataset.tab === "profile") {
+      await refreshUserAuctionHistory(true);
+    }
   });
 });
 

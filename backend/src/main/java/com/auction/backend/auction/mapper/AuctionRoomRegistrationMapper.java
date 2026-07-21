@@ -13,6 +13,8 @@ public interface AuctionRoomRegistrationMapper {
 
     List<AuctionRoomRegistration> findAllByRoomId(@Param("roomId") String roomId);
 
+    List<AuctionRoomRegistration> findAllByUserId(@Param("userId") String userId);
+
     int insert(AuctionRoomRegistration registration);
 
     int updateForRegistration(AuctionRoomRegistration registration);
