@@ -47,6 +47,7 @@ const state = {
   userAuctionHistoryUserId: null,
   userAuctionHistoryLoading: false,
   profileHistoryTab: "created",
+  profileEditorOpen: false,
   selectedRoomId: null,
   selectedRoom: null,
   selectedRoomLeaderboard: [],
@@ -1098,7 +1099,7 @@ function renderProfileView() {
                 .join("")}
             </select>
           </label>
-          <button class="ghost-button" id="jumpToEditor">编辑资料</button>
+          <button class="ghost-button" id="openProfileEditorButton">编辑个人资料</button>
         </div>
       </section>
 
@@ -1116,6 +1117,9 @@ function renderProfileView() {
           </div>
         </div>
         <p class="profile-bio">${currentUser.bio || "\u8fd9\u4e2a\u7528\u6237\u8fd8\u6ca1\u6709\u5199\u7b80\u4ecb\u3002"}</p>
+        <div class="profile-inline-actions">
+          <button type="button" class="ghost-button" id="profileCardEditButton">编辑个人资料</button>
+        </div>
       </section>
 
       <section class="room-panel">
@@ -1226,22 +1230,30 @@ function renderProfileView() {
         }
       </section>
 
-      <section class="room-panel">
-        <div id="profileEditorAnchor"></div>
-        <div class="section-header compact">
-          <div>
-            <h2>编辑资料</h2>
-            <p>头像建议用上面的按钮直接上传，这里主要修改昵称、简介和密码。</p>
-          </div>
-        </div>
-        <form id="profileForm" class="stack-form">
-          <input name="nickname" placeholder="昵称" value="${currentUser.nickname}" required />
-          <input name="avatarUrl" placeholder="需要手动替换时再填写新的头像地址" />
-          <textarea name="bio" rows="4" placeholder="个人简介">${currentUser.bio || ""}</textarea>
-          <input name="password" type="password" placeholder="新密码，不修改可留空" />
-          <button type="submit">保存资料</button>
-        </form>
-      </section>
+      ${
+        state.profileEditorOpen
+          ? `
+            <div class="profile-modal-backdrop" id="profileEditorBackdrop">
+              <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profileEditorTitle">
+                <div class="profile-modal-head">
+                  <div>
+                    <h2 id="profileEditorTitle">编辑个人资料</h2>
+                    <p>头像建议直接用主页上的按钮上传，这里主要修改昵称、简介和密码。</p>
+                  </div>
+                  <button type="button" class="ghost-button profile-modal-close" id="closeProfileEditorButton">关闭</button>
+                </div>
+                <form id="profileForm" class="stack-form profile-modal-form">
+                  <input name="nickname" placeholder="昵称" value="${currentUser.nickname}" required />
+                  <input name="avatarUrl" placeholder="需要手动替换时再填写新的头像地址" />
+                  <textarea name="bio" rows="4" placeholder="个人简介">${currentUser.bio || ""}</textarea>
+                  <input name="password" type="password" placeholder="新密码，不修改可留空" />
+                  <button type="submit">保存资料</button>
+                </form>
+              </section>
+            </div>
+          `
+          : ""
+      }
     </section>
   `;
 
@@ -1252,8 +1264,22 @@ function renderProfileView() {
     screenEl.querySelector("#avatarFileInput")?.click();
   });
   screenEl.querySelector("#avatarFileInput")?.addEventListener("change", handleAvatarSelected);
-  screenEl.querySelector("#jumpToEditor")?.addEventListener("click", () => {
-    document.querySelector("#profileEditorAnchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const openProfileEditor = () => {
+    state.profileEditorOpen = true;
+    renderPage();
+  };
+  screenEl.querySelector("#openProfileEditorButton")?.addEventListener("click", openProfileEditor);
+  screenEl.querySelector("#profileCardEditButton")?.addEventListener("click", openProfileEditor);
+  screenEl.querySelector("#closeProfileEditorButton")?.addEventListener("click", () => {
+    state.profileEditorOpen = false;
+    renderPage();
+  });
+  screenEl.querySelector("#profileEditorBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id !== "profileEditorBackdrop") {
+      return;
+    }
+    state.profileEditorOpen = false;
+    renderPage();
   });
   screenEl.querySelectorAll("[data-profile-history-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1640,6 +1666,7 @@ async function handleUpdateProfile(event) {
     }));
 
     setFeedback("\u4e2a\u4eba\u8d44\u6599\u5df2\u4fdd\u5b58");
+    state.profileEditorOpen = false;
     renderPage();
     if (state.activeTab === "profile") {
       refreshUserAuctionHistory(true);
@@ -1811,6 +1838,7 @@ bottomNavItems.forEach((item) => {
       return;
     }
     state.activeTab = item.dataset.tab;
+    state.profileEditorOpen = false;
     if (item.dataset.tab !== "home") {
       clearSelectedRoom();
     }
