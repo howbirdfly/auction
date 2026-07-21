@@ -535,6 +535,21 @@ function renderBidPanel(room) {
     `;
   }
 
+  if (bidClosed) {
+    return `
+      <section class="room-panel bid-panel bid-finished-panel">
+        <div class="section-header compact">
+          <div>
+            <h2>竞拍已结束</h2>
+            <p>本场已经进入结算状态，当前页面展示的是最终成交结果和落槌记录。</p>
+          </div>
+        </div>
+        <div class="bid-closed-note">你现在不能继续出价，可以返回首页查看其他正在进行中的房间。</div>
+        <button type="button" class="secondary-button" id="settlementBackHomeButton">返回首页继续逛房间</button>
+      </section>
+    `;
+  }
+
   return `
     <section class="room-panel bid-panel">
       <div class="section-header compact">
@@ -590,13 +605,14 @@ function renderBidPanel(room) {
 function renderLeaderboardPanel() {
   const leaderboard = state.selectedRoomLeaderboard || [];
   const currentUser = getCurrentUser();
+  const roomClosed = isRoomBiddingClosed(state.selectedRoom);
 
   return `
     <section class="room-panel">
       <div class="section-header compact">
         <div>
-          <h2>实时排行</h2>
-          <p>临近结束时，这里会实时刷新当前领先的出价用户。</p>
+          <h2>${roomClosed ? "最终排行" : "实时排行"}</h2>
+          <p>${roomClosed ? "这里保留本场竞拍结束时的最终排名结果。" : "临近结束时，这里会实时刷新当前领先的出价用户。"}</p>
         </div>
       </div>
       <div class="leaderboard-list">
@@ -643,11 +659,18 @@ function renderSettlementPanel(room) {
     return "";
   }
 
+  const latestBid = room.recentBids?.[0] || null;
   const winner =
     state.users.find((user) => user.nickname === room.leaderNickname) ||
     state.users.find((user) => user.account === room.leaderNickname) ||
     null;
   const hasWinner = Boolean(room.leaderNickname && room.bidCount > 0);
+  const winnerIdentity = winner
+    ? `@${winner.account} · ${winner.userId}`
+    : latestBid?.userId || "无人出价";
+  const settlementHint = room.registrationRequired
+    ? "报名保证金和竞拍冻结金额会在结算后统一处理，可以去“我的”里查看余额变化。"
+    : "本场没有报名门槛，房间已完成最终成交结算。";
 
   return `
     <section class="room-panel settlement-panel ${hasWinner ? "sold" : "unsold"}">
@@ -669,9 +692,10 @@ function renderSettlementPanel(room) {
                 alt="${room.leaderNickname}"
                 onerror="this.src='${DEFAULT_AVATAR}'"
               />
-              <div>
+              <div class="settlement-winner-meta">
                 <strong>${room.leaderNickname}</strong>
-                <span>恭喜拍得本场商品</span>
+                <span>${winnerIdentity}</span>
+                <small>恭喜拍得本场商品</small>
               </div>
             </div>
           `
@@ -699,6 +723,17 @@ function renderSettlementPanel(room) {
         <article class="settlement-metric">
           <span>总出价次数</span>
           <strong>${room.bidCount}</strong>
+        </article>
+      </div>
+
+      <div class="settlement-note-grid">
+        <article class="settlement-note-card">
+          <span>最后出价时间</span>
+          <strong>${latestBid ? formatDateTime(latestBid.bidTime) : formatDateTime(room.endsAt)}</strong>
+        </article>
+        <article class="settlement-note-card">
+          <span>结算说明</span>
+          <strong>${settlementHint}</strong>
         </article>
       </div>
     </section>
@@ -740,22 +775,45 @@ function renderRoomView() {
       </section>
 
       <section class="room-summary">
-        <div class="summary-card primary">
-          <span>当前价</span>
-          <strong>${formatPrice(room.currentPrice)}</strong>
-        </div>
-        <div class="summary-card">
-          <span>下一口起拍</span>
-          <strong>${formatPrice(room.minNextBid)}</strong>
-        </div>
-        <div class="summary-card">
-          <span>领先者</span>
-          <strong>${room.leaderNickname || "暂无"}</strong>
-        </div>
-        <div class="summary-card">
-          <span>剩余时间</span>
-          <strong id="roomCountdownValue">${formatCountdown(room.secondsRemaining)}</strong>
-        </div>
+        ${
+          room.status === "CLOSED"
+            ? `
+              <div class="summary-card primary">
+                <span>${room.bidCount > 0 ? "成交价" : "结算状态"}</span>
+                <strong>${room.bidCount > 0 ? formatPrice(room.currentPrice) : "流拍"}</strong>
+              </div>
+              <div class="summary-card">
+                <span>起拍价</span>
+                <strong>${formatPrice(room.startPrice)}</strong>
+              </div>
+              <div class="summary-card">
+                <span>获胜者</span>
+                <strong>${room.leaderNickname || "无人出价"}</strong>
+              </div>
+              <div class="summary-card">
+                <span>总出价次数</span>
+                <strong>${room.bidCount}</strong>
+              </div>
+            `
+            : `
+              <div class="summary-card primary">
+                <span>当前价</span>
+                <strong>${formatPrice(room.currentPrice)}</strong>
+              </div>
+              <div class="summary-card">
+                <span>下一口起拍</span>
+                <strong>${formatPrice(room.minNextBid)}</strong>
+              </div>
+              <div class="summary-card">
+                <span>领先者</span>
+                <strong>${room.leaderNickname || "暂无"}</strong>
+              </div>
+              <div class="summary-card">
+                <span>剩余时间</span>
+                <strong id="roomCountdownValue">${formatCountdown(room.secondsRemaining)}</strong>
+              </div>
+            `
+        }
       </section>
 
       ${renderSettlementPanel(room)}
@@ -767,8 +825,8 @@ function renderRoomView() {
       <section class="room-panel">
         <div class="section-header compact">
           <div>
-            <h2>最新出价记录</h2>
-            <p>房间内所有人都能看到这里的实时变化。</p>
+            <h2>${room.status === "CLOSED" ? "落槌记录" : "最新出价记录"}</h2>
+            <p>${room.status === "CLOSED" ? "这里保留了房间结束前的最终出价顺序。" : "房间内所有人都能看到这里的实时变化。"}</p>
           </div>
         </div>
         <div class="timeline">
@@ -813,15 +871,17 @@ function renderRoomView() {
   `;
 
   screenEl.querySelector("#backToLobby")?.addEventListener("click", () => {
-    state.selectedRoomId = null;
-    state.selectedRoom = null;
-    state.selectedRoomLeaderboard = [];
-    state.selectedRoomQualification = null;
+    clearSelectedRoom();
     renderPage();
   });
 
   screenEl.querySelector("#bidForm")?.addEventListener("submit", handleBid);
   screenEl.querySelector("#registerAuctionButton")?.addEventListener("click", handleRegisterForAuction);
+  screenEl.querySelector("#settlementBackHomeButton")?.addEventListener("click", () => {
+    clearSelectedRoom();
+    state.activeTab = "home";
+    renderPage();
+  });
   screenEl.querySelector("#deleteExpiredRoomButton")?.addEventListener("click", () => {
     handleDeleteRoom(room.roomId);
   });

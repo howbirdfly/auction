@@ -366,6 +366,18 @@ button {
   color: #7d8696;
 }
 
+.settlement-winner-meta,
+.settlement-empty {
+  min-width: 0;
+}
+
+.settlement-winner-meta small {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 0.86rem;
+}
+
 .settlement-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -393,6 +405,47 @@ button {
   display: block;
   margin-top: 8px;
   font-size: 1.08rem;
+}
+
+.settlement-note-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.settlement-note-card {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(32, 36, 44, 0.06);
+}
+
+.settlement-note-card span,
+.settlement-note-card strong {
+  display: block;
+}
+
+.settlement-note-card span {
+  color: #8b94a3;
+}
+
+.settlement-note-card strong {
+  margin-top: 8px;
+  font-size: 0.96rem;
+  line-height: 1.65;
+}
+
+.secondary-button {
+  width: 100%;
+  border: 1px solid rgba(32, 36, 44, 0.12);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: #ffffff;
+  color: #20242c;
+  font-weight: 700;
+}
+
+.bid-finished-panel {
+  gap: 12px;
 }
 
 .metric-action {
