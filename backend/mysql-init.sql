@@ -70,3 +70,21 @@ CREATE TABLE IF NOT EXISTS user_account (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS wallet_reconcile_issue (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(32) NOT NULL,
+    account VARCHAR(32) NOT NULL,
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    latest_balance_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    latest_frozen_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    balance_diff DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_diff DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    transaction_count INT NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    resolved_at TIMESTAMP NULL,
+    KEY idx_wallet_reconcile_issue_user_status (user_id, status),
+    KEY idx_wallet_reconcile_issue_created (created_at)
+);

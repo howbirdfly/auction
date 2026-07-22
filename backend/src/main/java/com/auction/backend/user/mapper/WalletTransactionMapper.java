@@ -13,5 +13,7 @@ public interface WalletTransactionMapper {
 
     List<WalletTransaction> findLatestByUserId(@Param("userId") String userId, @Param("limit") int limit);
 
+    List<WalletTransaction> findAllByUserId(@Param("userId") String userId);
+
     int insert(WalletTransaction transaction);
 }

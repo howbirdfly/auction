@@ -58,6 +58,25 @@
         limit #{limit}
     </select>
 
+    <select id="findAllByUserId" resultMap="WalletTransactionResultMap">
+        select id,
+               business_key,
+               user_id,
+               account,
+               transaction_type,
+               available_delta,
+               frozen_delta,
+               balance_after,
+               frozen_after,
+               reference_type,
+               reference_id,
+               description,
+               created_at
+        from wallet_transaction
+        where user_id = #{userId}
+        order by created_at asc, id asc
+    </select>
+
     <insert id="insert" parameterType="com.auction.backend.user.model.WalletTransaction" useGeneratedKeys="true" keyProperty="id">
         insert into wallet_transaction (
             business_key,

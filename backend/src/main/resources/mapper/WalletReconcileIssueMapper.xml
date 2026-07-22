@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.auction.backend.user.mapper.WalletReconcileIssueMapper">
+
+    <resultMap id="WalletReconcileIssueResultMap" type="com.auction.backend.user.model.WalletReconcileIssue">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="account" column="account"/>
+        <result property="balance" column="balance"/>
+        <result property="frozenAmount" column="frozen_amount"/>
+        <result property="latestBalanceAfter" column="latest_balance_after"/>
+        <result property="latestFrozenAfter" column="latest_frozen_after"/>
+        <result property="balanceDiff" column="balance_diff"/>
+        <result property="frozenDiff" column="frozen_diff"/>
+        <result property="transactionCount" column="transaction_count"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="resolvedAt" column="resolved_at"/>
+    </resultMap>
+
+    <sql id="WalletReconcileIssueColumns">
+        id,
+        user_id,
+        account,
+        balance,
+        frozen_amount,
+        latest_balance_after,
+        latest_frozen_after,
+        balance_diff,
+        frozen_diff,
+        transaction_count,
+        status,
+        created_at,
+        resolved_at
+    </sql>
+
+    <select id="findOpenByUserId" resultMap="WalletReconcileIssueResultMap">
+        select <include refid="WalletReconcileIssueColumns"/>
+        from wallet_reconcile_issue
+        where user_id = #{userId}
+          and status = 'OPEN'
+        order by created_at desc, id desc
+        limit 1
+    </select>
+
+    <select id="findLatest" resultMap="WalletReconcileIssueResultMap">
+        select <include refid="WalletReconcileIssueColumns"/>
+        from wallet_reconcile_issue
+        order by created_at desc, id desc
+        limit #{limit}
+    </select>
+
+    <select id="findByUserId" resultMap="WalletReconcileIssueResultMap">
+        select <include refid="WalletReconcileIssueColumns"/>
+        from wallet_reconcile_issue
+        where user_id = #{userId}
+        order by created_at desc, id desc
+        limit #{limit}
+    </select>
+
+    <insert id="insert" parameterType="com.auction.backend.user.model.WalletReconcileIssue" useGeneratedKeys="true" keyProperty="id">
+        insert into wallet_reconcile_issue (
+            user_id,
+            account,
+            balance,
+            frozen_amount,
+            latest_balance_after,
+            latest_frozen_after,
+            balance_diff,
+            frozen_diff,
+            transaction_count,
+            status,
+            created_at,
+            resolved_at
+        ) values (
+            #{userId},
+            #{account},
+            #{balance},
+            #{frozenAmount},
+            #{latestBalanceAfter},
+            #{latestFrozenAfter},
+            #{balanceDiff},
+            #{frozenDiff},
+            #{transactionCount},
+            #{status},
+            #{createdAt},
+            #{resolvedAt}
+        )
+    </insert>
+
+    <update id="updateOpen" parameterType="com.auction.backend.user.model.WalletReconcileIssue">
+        update wallet_reconcile_issue
+        set account = #{account},
+            balance = #{balance},
+            frozen_amount = #{frozenAmount},
+            latest_balance_after = #{latestBalanceAfter},
+            latest_frozen_after = #{latestFrozenAfter},
+            balance_diff = #{balanceDiff},
+            frozen_diff = #{frozenDiff},
+            transaction_count = #{transactionCount}
+        where id = #{id}
+          and status = 'OPEN'
+    </update>
+
+    <update id="markOpenResolvedByUserId">
+        update wallet_reconcile_issue
+        set status = 'RESOLVED',
+            resolved_at = #{resolvedAt}
+        where user_id = #{userId}
+          and status = 'OPEN'
+    </update>
+</mapper>

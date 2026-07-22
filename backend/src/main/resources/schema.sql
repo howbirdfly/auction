@@ -157,3 +157,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_wallet_transaction_business_key
 
 CREATE INDEX IF NOT EXISTS idx_wallet_transaction_user_created
     ON wallet_transaction (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS wallet_reconcile_issue (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(32) NOT NULL,
+    account VARCHAR(32) NOT NULL,
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    latest_balance_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    latest_frozen_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    balance_diff DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    frozen_diff DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    transaction_count INT NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    resolved_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_reconcile_issue_user_status
+    ON wallet_reconcile_issue (user_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_reconcile_issue_created
+    ON wallet_reconcile_issue (created_at);
