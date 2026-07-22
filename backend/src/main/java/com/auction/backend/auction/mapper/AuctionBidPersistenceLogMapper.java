@@ -24,4 +24,8 @@ public interface AuctionBidPersistenceLogMapper {
 
     java.util.List<AuctionBidPersistenceLog> findPendingForCompensation(@Param("staleBefore") Instant staleBefore,
                                                                         @Param("limit") int limit);
+
+    java.util.List<AuctionBidPersistenceLog> findReplayableByRoomId(@Param("roomId") String roomId,
+                                                                    @Param("staleBefore") Instant staleBefore,
+                                                                    @Param("limit") int limit);
 }

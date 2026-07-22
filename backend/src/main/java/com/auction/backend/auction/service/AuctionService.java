@@ -32,6 +32,7 @@ public class AuctionService {
     private final AuctionRoomReadService auctionRoomReadService;
     private final BidEngineRouter bidEngineRouter;
     private final BidRequestIdempotencyService bidRequestIdempotencyService;
+    private final BidRateLimitService bidRateLimitService;
     private final HotRoomManager hotRoomManager;
     private final AuctionQualificationService auctionQualificationService;
     private final AuctionWalletService auctionWalletService;
@@ -43,6 +44,7 @@ public class AuctionService {
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
                           BidRequestIdempotencyService bidRequestIdempotencyService,
+                          BidRateLimitService bidRateLimitService,
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
                           AuctionWalletService auctionWalletService,
@@ -53,6 +55,7 @@ public class AuctionService {
         this.auctionRoomReadService = auctionRoomReadService;
         this.bidEngineRouter = bidEngineRouter;
         this.bidRequestIdempotencyService = bidRequestIdempotencyService;
+        this.bidRateLimitService = bidRateLimitService;
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
         this.auctionWalletService = auctionWalletService;
@@ -140,6 +143,7 @@ public class AuctionService {
 
         AuctionRoomSnapshot snapshot;
         try {
+            bidRateLimitService.assertAllowed(roomId, request.userId());
             snapshot = bidEngineRouter.placeBid(roomId, request);
             bidRequestIdempotencyService.markSuccess(request.requestId(), snapshot.version());
         } catch (ResponseStatusException exception) {

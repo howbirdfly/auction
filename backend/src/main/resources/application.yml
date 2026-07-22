@@ -63,3 +63,6 @@ auction:
       initial-interval: 1s
       multiplier: 2.0
       max-interval: 5s
+  bid-rate-limit:
+    enabled: true
+    user-room-interval: 800ms

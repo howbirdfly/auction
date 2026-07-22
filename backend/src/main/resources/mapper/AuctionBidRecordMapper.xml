@@ -76,6 +76,12 @@
         where room_id = #{roomId}
     </select>
 
+    <select id="findMaxVersionByRoomId" resultType="long">
+        select coalesce(max(bid_version), 0)
+        from auction_bid_record
+        where room_id = #{roomId}
+    </select>
+
     <delete id="deleteByRoomId">
         delete from auction_bid_record
         where room_id = #{roomId}

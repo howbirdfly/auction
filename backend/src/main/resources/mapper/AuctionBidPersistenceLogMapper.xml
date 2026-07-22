@@ -79,4 +79,16 @@
         order by updated_at asc
         limit #{limit}
     </select>
+
+    <select id="findReplayableByRoomId" resultMap="AuctionBidPersistenceLogResultMap">
+        select event_id, request_id, room_id, user_id, amount, status, attempt_count, last_error, payload_json, created_at, updated_at, persisted_at
+        from auction_bid_persistence_log
+        where room_id = #{roomId}
+          and (
+              status in ('QUEUED', 'FAILED', 'FALLBACK_DIRECT')
+              or (status = 'PROCESSING' and updated_at &lt; #{staleBefore})
+          )
+        order by created_at asc
+        limit #{limit}
+    </select>
 </mapper>

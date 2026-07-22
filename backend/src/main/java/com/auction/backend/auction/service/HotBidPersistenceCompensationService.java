@@ -14,6 +14,8 @@ import java.util.List;
 public class HotBidPersistenceCompensationService {
 
     private static final int COMPENSATION_BATCH_SIZE = 20;
+    private static final int ROOM_CATCH_UP_BATCH_SIZE = 200;
+    private static final int PROCESSING_STALE_SECONDS = 10;
 
     private final AuctionBidPersistenceLogMapper auctionBidPersistenceLogMapper;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
@@ -36,13 +38,31 @@ public class HotBidPersistenceCompensationService {
     @Scheduled(fixedDelay = 5000)
     public void compensate() {
         List<AuctionBidPersistenceLog> pendingLogs = auctionBidPersistenceLogMapper.findPendingForCompensation(
-                Instant.now().minusSeconds(10),
+                Instant.now().minusSeconds(PROCESSING_STALE_SECONDS),
                 COMPENSATION_BATCH_SIZE
         );
 
         for (AuctionBidPersistenceLog pendingLog : pendingLogs) {
             tryReplay(pendingLog);
         }
+    }
+
+    public boolean catchUpRoom(String roomId, long targetVersion) {
+        if (targetVersion <= 0 || currentPersistedVersion(roomId) >= targetVersion) {
+            return true;
+        }
+
+        List<AuctionBidPersistenceLog> replayableLogs = auctionBidPersistenceLogMapper.findReplayableByRoomId(
+                roomId,
+                Instant.now().minusSeconds(PROCESSING_STALE_SECONDS),
+                ROOM_CATCH_UP_BATCH_SIZE
+        );
+
+        for (AuctionBidPersistenceLog replayableLog : replayableLogs) {
+            tryReplay(replayableLog);
+        }
+
+        return currentPersistedVersion(roomId) >= targetVersion;
     }
 
     private void tryReplay(AuctionBidPersistenceLog pendingLog) {
@@ -76,5 +96,10 @@ public class HotBidPersistenceCompensationService {
         }
 
         throw new IllegalStateException("hot bid persistence payload is missing for event " + pendingLog.getEventId());
+    }
+
+    private long currentPersistedVersion(String roomId) {
+        Long version = auctionBidRecordMapper.findMaxVersionByRoomId(roomId);
+        return version == null ? 0L : version;
     }
 }

@@ -22,5 +22,7 @@ public interface AuctionBidRecordMapper {
 
     long countByRoomId(@Param("roomId") String roomId);
 
+    Long findMaxVersionByRoomId(@Param("roomId") String roomId);
+
     int deleteByRoomId(@Param("roomId") String roomId);
 }

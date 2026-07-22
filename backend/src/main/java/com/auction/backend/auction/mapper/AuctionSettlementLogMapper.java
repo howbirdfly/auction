@@ -17,7 +17,8 @@ public interface AuctionSettlementLogMapper {
     int markProcessing(@Param("roomId") String roomId,
                        @Param("winnerUserId") String winnerUserId,
                        @Param("finalPrice") java.math.BigDecimal finalPrice,
-                       @Param("updatedAt") Instant updatedAt);
+                       @Param("updatedAt") Instant updatedAt,
+                       @Param("staleBefore") Instant staleBefore);
 
     int markWinnerFundsSettled(@Param("roomId") String roomId,
                                @Param("updatedAt") Instant updatedAt);

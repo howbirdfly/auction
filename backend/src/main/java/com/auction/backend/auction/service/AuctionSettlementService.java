@@ -8,6 +8,7 @@ import com.auction.backend.auction.model.AuctionRoomRegistration;
 import com.auction.backend.auction.model.AuctionSettlementLog;
 import com.auction.backend.auction.model.AuctionStatus;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,22 +23,26 @@ public class AuctionSettlementService {
 
     private static final int MAX_ERROR_LENGTH = 255;
     private static final int COMPENSATION_BATCH_SIZE = 20;
+    private static final int PROCESSING_STALE_SECONDS = 10;
 
     private final AuctionSettlementLogMapper auctionSettlementLogMapper;
     private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
     private final AuctionWalletService auctionWalletService;
     private final AuctionRoomReadService auctionRoomReadService;
+    private final HotRoomSettlementCatchUpService hotRoomSettlementCatchUpService;
     private final ObjectProvider<AuctionSettlementService> selfProvider;
 
     public AuctionSettlementService(AuctionSettlementLogMapper auctionSettlementLogMapper,
                                     AuctionRoomRegistrationMapper auctionRoomRegistrationMapper,
                                     AuctionWalletService auctionWalletService,
                                     AuctionRoomReadService auctionRoomReadService,
+                                    HotRoomSettlementCatchUpService hotRoomSettlementCatchUpService,
                                     ObjectProvider<AuctionSettlementService> selfProvider) {
         this.auctionSettlementLogMapper = auctionSettlementLogMapper;
         this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
         this.auctionWalletService = auctionWalletService;
         this.auctionRoomReadService = auctionRoomReadService;
+        this.hotRoomSettlementCatchUpService = hotRoomSettlementCatchUpService;
         this.selfProvider = selfProvider;
     }
 
@@ -52,8 +57,13 @@ public class AuctionSettlementService {
             return;
         }
 
-        Instant now = Instant.now();
-        auctionSettlementLogMapper.markProcessing(room.getRoomId(), room.getLeaderUserId(), room.getCurrentPrice(), now);
+        if (!hotRoomSettlementCatchUpService.isReadyForSettlement(room)) {
+            return;
+        }
+
+        if (!acquireSettlementLock(room)) {
+            return;
+        }
 
         try {
             List<AuctionRoomRegistration> registrations = auctionRoomRegistrationMapper.findAllByRoomId(room.getRoomId());
@@ -77,7 +87,6 @@ public class AuctionSettlementService {
             auctionSettlementLogMapper.markSuccess(room.getRoomId(), Instant.now(), Instant.now());
         } catch (RuntimeException exception) {
             auctionSettlementLogMapper.markFailed(room.getRoomId(), truncateError(exception.getMessage()), Instant.now());
-            throw exception;
         }
     }
 
@@ -85,7 +94,7 @@ public class AuctionSettlementService {
         Set<String> processedRoomIds = new HashSet<>();
 
         List<AuctionSettlementLog> pendingLogs = auctionSettlementLogMapper.findPendingForCompensation(
-                Instant.now().minusSeconds(10),
+                Instant.now().minusSeconds(PROCESSING_STALE_SECONDS),
                 COMPENSATION_BATCH_SIZE
         );
         for (AuctionSettlementLog log : pendingLogs) {
@@ -118,8 +127,24 @@ public class AuctionSettlementService {
         newLog.setAttemptCount(0);
         newLog.setCreatedAt(now);
         newLog.setUpdatedAt(now);
-        auctionSettlementLogMapper.insert(newLog);
+        try {
+            auctionSettlementLogMapper.insert(newLog);
+        } catch (DuplicateKeyException ignored) {
+            return auctionSettlementLogMapper.findByRoomId(room.getRoomId());
+        }
         return newLog;
+    }
+
+    private boolean acquireSettlementLock(AuctionRoom room) {
+        Instant now = Instant.now();
+        int updatedRows = auctionSettlementLogMapper.markProcessing(
+                room.getRoomId(),
+                room.getLeaderUserId(),
+                room.getCurrentPrice(),
+                now,
+                now.minusSeconds(PROCESSING_STALE_SECONDS)
+        );
+        return updatedRows > 0;
     }
 
     private boolean shouldConsumeWinnerFunds(AuctionRoom room, List<AuctionRoomRegistration> registrations) {

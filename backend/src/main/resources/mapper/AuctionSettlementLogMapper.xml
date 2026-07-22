@@ -71,6 +71,10 @@
             last_error = null,
             updated_at = #{updatedAt}
         where room_id = #{roomId}
+          and (
+              status in ('PENDING', 'FAILED')
+              or (status = 'PROCESSING' and updated_at &lt; #{staleBefore})
+          )
     </update>
 
     <update id="markWinnerFundsSettled">
