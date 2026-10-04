@@ -53,8 +53,8 @@ auction:
       leaderboard-ttl: 30m
       hot-room-buffer: 10m
       hot-access-threshold: 30
-      hot-bid-enter-threshold: 30
-      hot-bid-exit-threshold: 8
+      hot-bid-enter-threshold: 25
+      hot-bid-exit-threshold: 6
       hot-bid-enter-window: 5s
       hot-bid-exit-window: 60s
       bid-lock-ttl: 5s

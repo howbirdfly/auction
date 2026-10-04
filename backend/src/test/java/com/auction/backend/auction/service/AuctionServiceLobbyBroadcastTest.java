@@ -53,9 +53,6 @@ class AuctionServiceLobbyBroadcastTest {
         );
         AuctionRoomSnapshot snapshot = org.mockito.Mockito.mock(AuctionRoomSnapshot.class);
         when(bidEngineRouter.placeBid("AR-1", request)).thenReturn(snapshot);
-        when(hotRoomManager.isHot("AR-1")).thenReturn(false);
-        when(auctionRoomReadService.refreshLobbyCache()).thenReturn(List.of());
-
         auctionService.placeBid("AR-1", request);
         auctionService.placeBid("AR-1", request);
 

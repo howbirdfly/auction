@@ -8,8 +8,11 @@ import com.auction.backend.auction.model.BidRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -37,6 +40,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
     private final StringRedisTemplate stringRedisTemplate;
     private final JsonMapper jsonMapper;
     private final AuctionCacheProperties cacheProperties;
+    private final RedisScript<String> hotLeaderboardScript;
 
     public RedisAuctionCacheService(StringRedisTemplate stringRedisTemplate,
                                     JsonMapper jsonMapper,
@@ -44,6 +48,10 @@ public class RedisAuctionCacheService implements AuctionCacheService {
         this.stringRedisTemplate = stringRedisTemplate;
         this.jsonMapper = jsonMapper;
         this.cacheProperties = cacheProperties;
+        DefaultRedisScript<String> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("scripts/auction_hot_leaderboard.lua"));
+        script.setResultType(String.class);
+        this.hotLeaderboardScript = script;
     }
 
     @Override
@@ -72,27 +80,26 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 return Optional.empty();
             }
 
-            Set<ZSetOperations.TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
-                    .reverseRangeWithScores(key, 0, 9);
-            if (tuples == null || tuples.isEmpty()) {
+            String payload = stringRedisTemplate.execute(
+                    hotLeaderboardScript,
+                    List.of(key, leaderboardProfileKey(roomId)),
+                    Integer.toString(10)
+            );
+            if (payload == null || payload.isBlank()) {
                 return Optional.of(List.of());
             }
 
             List<AuctionLeaderboardEntry> entries = new ArrayList<>();
-            int rank = 1;
-            for (ZSetOperations.TypedTuple<String> tuple : tuples) {
-                if (tuple == null || tuple.getValue() == null || tuple.getScore() == null) {
+            for (String line : payload.split("\\n")) {
+                String[] parts = line.split("\\t", 4);
+                if (parts.length != 4) {
                     continue;
                 }
-                String userId = tuple.getValue();
-                String nickname = stringRedisTemplate.opsForHash().get(leaderboardProfileKey(roomId), userId) instanceof String value
-                        ? value
-                        : userId;
                 entries.add(new AuctionLeaderboardEntry(
-                        rank++,
-                        userId,
-                        nickname,
-                        BigDecimal.valueOf(tuple.getScore())
+                        Integer.parseInt(parts[0]),
+                        parts[1],
+                        parts[2],
+                        new BigDecimal(parts[3])
                 ));
             }
             return Optional.of(entries);

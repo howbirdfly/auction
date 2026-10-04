@@ -15,8 +15,8 @@ public class AuctionCacheProperties {
     private Duration leaderboardTtl = Duration.ofMinutes(30);
     private Duration hotRoomBuffer = Duration.ofMinutes(10);
     private int hotAccessThreshold = 30;
-    private int hotBidEnterThreshold = 30;
-    private int hotBidExitThreshold = 8;
+    private int hotBidEnterThreshold = 25;
+    private int hotBidExitThreshold = 6;
     private Duration hotBidEnterWindow = Duration.ofSeconds(5);
     private Duration hotBidExitWindow = Duration.ofSeconds(60);
     private Duration bidLockTtl = Duration.ofSeconds(5);

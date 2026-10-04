@@ -77,10 +77,8 @@ public class AuctionService {
 
         if (snapshot.status() == AuctionStatus.BIDDING
                 && snapshot.secondsRemaining() > 0
-                && !hotRoomManager.isHot(roomId)
-                && hotRoomManager.recordAccess(roomId)) {
-            hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
-            return auctionRoomReadService.getRoom(roomId);
+                && !hotRoomManager.isHot(roomId)) {
+            hotRoomManager.recordAccess(roomId);
         }
 
         return snapshot;
@@ -138,16 +136,15 @@ public class AuctionService {
 
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
         AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
-        HotRoomStatus statusBeforeBid = hotRoomManager.status(roomId);
-        boolean shouldPromote = statusBeforeBid == HotRoomStatus.COLD
-                && hotRoomManager.recordBid(roomId);
+        boolean thresholdReached = hotRoomManager.recordBid(roomId);
+        HotRoomStatus status = hotRoomManager.status(roomId);
+        boolean shouldPromote = status == HotRoomStatus.COLD && thresholdReached;
         if (shouldPromote) {
             hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
-        } else if (statusBeforeBid == HotRoomStatus.HOT) {
-            hotRoomManager.recordBid(roomId);
+            status = HotRoomStatus.HOT;
         }
 
-        if (hotRoomManager.isHot(roomId)) {
+        if (status == HotRoomStatus.HOT) {
             List<AuctionLeaderboardEntry> leaderboard = auctionRoomReadService.getLeaderboard(roomId);
             broadcastService.broadcastLeaderboard(snapshot, leaderboard);
         }
