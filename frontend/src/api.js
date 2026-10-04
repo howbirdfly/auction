@@ -2,6 +2,7 @@ const API_BASE = "http://localhost:8080/api";
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
@@ -11,9 +12,38 @@ async function request(path, options = {}) {
 
   const payload = await response.json();
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.message || "请求失败");
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("auction-auth-expired"));
+    }
+    const error = new Error(payload.message || "请求失败");
+    error.status = response.status;
+    throw error;
   }
   return payload.data;
+}
+
+export function fetchCurrentUser() {
+  return request("/users/me");
+}
+
+export function loginUser(form) {
+  return request("/users/login", {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
+export function registerUser(form) {
+  return request("/users/register", {
+    method: "POST",
+    body: JSON.stringify(form),
+  });
+}
+
+export function logoutUser() {
+  return request("/users/logout", {
+    method: "POST",
+  });
 }
 
 export function fetchRooms() {

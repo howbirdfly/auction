@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
-@ConditionalOnProperty(name = "auction.persistence.rabbitmq.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "auction.persistence.rabbitmq.hot-bid-enabled", havingValue = "true")
 public class RabbitHotBidPersistenceGateway implements HotBidPersistenceGateway {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitHotBidPersistenceGateway.class);

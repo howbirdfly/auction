@@ -4,6 +4,7 @@ import com.auction.backend.auction.cache.AuctionCacheService;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
 import com.auction.backend.auction.model.AuctionRoom;
 import com.auction.backend.auction.model.AuctionStatus;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -14,13 +15,16 @@ public class HotRoomSettlementCatchUpService {
     private final AuctionCacheService auctionCacheService;
     private final HotRoomManager hotRoomManager;
     private final HotBidPersistenceCompensationService hotBidPersistenceCompensationService;
+    private final ObjectProvider<RedisHotBidStreamPersistenceService> redisHotBidStreamPersistenceServiceProvider;
 
     public HotRoomSettlementCatchUpService(AuctionCacheService auctionCacheService,
                                            HotRoomManager hotRoomManager,
-                                           HotBidPersistenceCompensationService hotBidPersistenceCompensationService) {
+                                           HotBidPersistenceCompensationService hotBidPersistenceCompensationService,
+                                           ObjectProvider<RedisHotBidStreamPersistenceService> redisHotBidStreamPersistenceServiceProvider) {
         this.auctionCacheService = auctionCacheService;
         this.hotRoomManager = hotRoomManager;
         this.hotBidPersistenceCompensationService = hotBidPersistenceCompensationService;
+        this.redisHotBidStreamPersistenceServiceProvider = redisHotBidStreamPersistenceServiceProvider;
     }
 
     public boolean isReadyForSettlement(AuctionRoom room) {
@@ -33,6 +37,11 @@ public class HotRoomSettlementCatchUpService {
                 .map(this::targetBidVersion)
                 .orElseGet(() -> targetBidVersion(room));
 
+        RedisHotBidStreamPersistenceService streamPersistenceService =
+                redisHotBidStreamPersistenceServiceProvider.getIfAvailable();
+        if (streamPersistenceService != null) {
+            return streamPersistenceService.catchUpRoom(room.getRoomId(), targetVersion);
+        }
         return hotBidPersistenceCompensationService.catchUpRoom(room.getRoomId(), targetVersion);
     }
 

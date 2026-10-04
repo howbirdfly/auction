@@ -11,6 +11,8 @@ import com.auction.backend.auction.model.AuctionStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -24,13 +26,16 @@ public class AuctionQualificationService {
     private final AuctionRoomReadService auctionRoomReadService;
     private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
     private final AuctionWalletService auctionWalletService;
+    private final HotRoomManager hotRoomManager;
 
     public AuctionQualificationService(AuctionRoomReadService auctionRoomReadService,
                                        AuctionRoomRegistrationMapper auctionRoomRegistrationMapper,
-                                       AuctionWalletService auctionWalletService) {
+                                       AuctionWalletService auctionWalletService,
+                                       HotRoomManager hotRoomManager) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
         this.auctionWalletService = auctionWalletService;
+        this.hotRoomManager = hotRoomManager;
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +71,7 @@ public class AuctionQualificationService {
                     now
             );
             auctionRoomRegistrationMapper.insert(registration);
+            cacheQualificationAfterCommit(roomId, registration.getUserId());
             return toSnapshot(registration);
         }
 
@@ -86,6 +92,7 @@ public class AuctionQualificationService {
         existing.setStatus(AuctionRegistrationStatus.LOCKED);
         existing.setUpdatedAt(now);
         auctionRoomRegistrationMapper.updateForRegistration(existing);
+        cacheQualificationAfterCommit(roomId, existing.getUserId());
         return toSnapshot(existing);
     }
 
@@ -159,5 +166,18 @@ public class AuctionQualificationService {
                 registration.getCreatedAt(),
                 registration.getUpdatedAt()
         );
+    }
+
+    private void cacheQualificationAfterCommit(String roomId, String userId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    hotRoomManager.cacheQualification(roomId, userId);
+                }
+            });
+            return;
+        }
+        hotRoomManager.cacheQualification(roomId, userId);
     }
 }

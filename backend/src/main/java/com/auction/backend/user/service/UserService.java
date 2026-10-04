@@ -10,7 +10,6 @@ import com.auction.backend.user.mapper.UserAccountMapper;
 import com.auction.backend.user.model.UserAccount;
 import jakarta.annotation.PostConstruct;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,21 +25,24 @@ import java.util.concurrent.atomic.AtomicLong;
 public class UserService {
 
     private static final String DEFAULT_AVATAR_URL = "https://placehold.co/256x256/f3f4f6/111827?text=User";
-    private static final int PASSWORD_STRENGTH = 10;
     private static final BigDecimal DEMO_INITIAL_BALANCE = BigDecimal.valueOf(2000);
+    private static final String ROLE_USER = "USER";
+    private static final String ROLE_ADMIN = "ADMIN";
 
     private final AtomicLong userSequence = new AtomicLong(10000);
     private final UserAccountMapper userAccountMapper;
     private final HotWalletCacheService hotWalletCacheService;
     private final WalletTransactionService walletTransactionService;
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(PASSWORD_STRENGTH);
+    private final PasswordEncoder passwordEncoder;
 
     public UserService(UserAccountMapper userAccountMapper,
                        HotWalletCacheService hotWalletCacheService,
-                       WalletTransactionService walletTransactionService) {
+                       WalletTransactionService walletTransactionService,
+                       PasswordEncoder passwordEncoder) {
         this.userAccountMapper = userAccountMapper;
         this.hotWalletCacheService = hotWalletCacheService;
         this.walletTransactionService = walletTransactionService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @PostConstruct
@@ -73,6 +75,7 @@ public class UserService {
                 request.account().trim(),
                 hashPassword(request.password()),
                 request.nickname().trim(),
+                ROLE_USER,
                 resolveAvatarUrl(request.avatarUrl()),
                 resolveBio(request.bio()),
                 BigDecimal.ZERO,
@@ -159,6 +162,7 @@ public class UserService {
         return new UserProfileSnapshot(
                 displayedUserAccount.getUserId(),
                 displayedUserAccount.getAccount(),
+                resolveRole(displayedUserAccount.getRole()),
                 displayedUserAccount.getNickname(),
                 displayedUserAccount.getAvatarUrl(),
                 displayedUserAccount.getBio(),
@@ -231,6 +235,7 @@ public class UserService {
                 "ava_host",
                 "123456",
                 "Host Ava",
+                ROLE_USER,
                 "https://placehold.co/256x256/fdf2f8/7c2d12?text=Ava",
                 "Sneaker blind box host."
         );
@@ -238,6 +243,7 @@ public class UserService {
                 "miko_live",
                 "123456",
                 "Host Miko",
+                ROLE_USER,
                 "https://placehold.co/256x256/e0f2fe/0f172a?text=Miko",
                 "Collectible toy room curator."
         );
@@ -245,14 +251,24 @@ public class UserService {
                 "u10001",
                 "123456",
                 "Bidder A",
+                ROLE_USER,
                 "https://placehold.co/256x256/fef3c7/1f2937?text=Bidder",
                 "Enjoys flash auctions and trendy collectibles."
+        );
+        addSeedUser(
+                "admin",
+                "admin123456",
+                "Auction Admin",
+                ROLE_ADMIN,
+                "https://placehold.co/256x256/e5e7eb/111827?text=Admin",
+                "Auction operations administrator."
         );
     }
 
     private void addSeedUser(String account,
                              String password,
                              String nickname,
+                             String role,
                              String avatarUrl,
                              String bio) {
         Instant now = Instant.now();
@@ -261,6 +277,7 @@ public class UserService {
                 account,
                 hashPassword(password),
                 nickname,
+                role,
                 avatarUrl,
                 bio,
                 DEMO_INITIAL_BALANCE,
@@ -268,5 +285,9 @@ public class UserService {
                 now,
                 now
         ));
+    }
+
+    private String resolveRole(String role) {
+        return ROLE_ADMIN.equalsIgnoreCase(role) ? ROLE_ADMIN : ROLE_USER;
     }
 }

@@ -8,6 +8,7 @@
         <id property="roomId" column="room_id"/>
         <result property="itemTitle" column="item_title"/>
         <result property="anchorName" column="anchor_name"/>
+        <result property="anchorUserId" column="anchor_user_id"/>
         <result property="imageUrl" column="image_url"/>
         <result property="startPrice" column="start_price"/>
         <result property="stepPrice" column="step_price"/>
@@ -25,6 +26,7 @@
         room_id,
         item_title,
         anchor_name,
+        anchor_user_id,
         image_url,
         start_price,
         step_price,
@@ -80,6 +82,7 @@
             room_id,
             item_title,
             anchor_name,
+            anchor_user_id,
             image_url,
             start_price,
             step_price,
@@ -95,6 +98,7 @@
             #{roomId},
             #{itemTitle},
             #{anchorName},
+            #{anchorUserId},
             #{imageUrl},
             #{startPrice},
             #{stepPrice},

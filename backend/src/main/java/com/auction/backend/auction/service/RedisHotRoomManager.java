@@ -4,6 +4,9 @@ import com.auction.backend.auction.cache.AuctionCacheService;
 import com.auction.backend.auction.config.AuctionCacheProperties;
 import com.auction.backend.auction.dto.AuctionLeaderboardEntry;
 import com.auction.backend.auction.dto.AuctionRoomSnapshot;
+import com.auction.backend.auction.mapper.AuctionRoomRegistrationMapper;
+import com.auction.backend.auction.model.AuctionRegistrationStatus;
+import com.auction.backend.auction.model.AuctionRoomRegistration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -19,13 +22,16 @@ public class RedisHotRoomManager implements HotRoomManager {
     private final StringRedisTemplate stringRedisTemplate;
     private final AuctionCacheService auctionCacheService;
     private final AuctionCacheProperties auctionCacheProperties;
+    private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
 
     public RedisHotRoomManager(StringRedisTemplate stringRedisTemplate,
                                AuctionCacheService auctionCacheService,
-                               AuctionCacheProperties auctionCacheProperties) {
+                               AuctionCacheProperties auctionCacheProperties,
+                               AuctionRoomRegistrationMapper auctionRoomRegistrationMapper) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.auctionCacheService = auctionCacheService;
         this.auctionCacheProperties = auctionCacheProperties;
+        this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
     }
 
     @Override
@@ -58,18 +64,50 @@ public class RedisHotRoomManager implements HotRoomManager {
             auctionCacheService.cacheRoom(snapshot);
             auctionCacheService.cacheLeaderboard(snapshot.roomId(), leaderboard, snapshot);
             auctionCacheService.cacheRecentBids(snapshot.roomId(), snapshot.recentBids(), snapshot);
+            refreshQualifications(snapshot.roomId(), ttl);
         } catch (Exception ignored) {
             // Fall back to MySQL path when Redis is unavailable.
         }
     }
 
     @Override
+    public void cacheQualification(String roomId, String userId) {
+        try {
+            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(modeKey(roomId)))) {
+                return;
+            }
+            String key = qualificationKey(roomId);
+            stringRedisTemplate.opsForSet().add(key, userId);
+            stringRedisTemplate.expire(key, auctionCacheProperties.getRoomTtl());
+        } catch (Exception ignored) {
+            // The next hot-room refresh reloads qualifications from MySQL.
+        }
+    }
+
+    @Override
     public void clear(String roomId) {
         try {
-            stringRedisTemplate.delete(modeKey(roomId));
+            stringRedisTemplate.delete(List.of(modeKey(roomId), qualificationKey(roomId)));
         } catch (Exception ignored) {
             // Ignore cleanup failures for hot room mode.
         }
+    }
+
+    private void refreshQualifications(String roomId, Duration ttl) {
+        String key = qualificationKey(roomId);
+        List<String> qualifiedUsers = auctionRoomRegistrationMapper.findAllByRoomId(roomId).stream()
+                .filter(registration -> registration.getStatus() == AuctionRegistrationStatus.LOCKED)
+                .map(AuctionRoomRegistration::getUserId)
+                .toList();
+        if (qualifiedUsers.isEmpty()) {
+            stringRedisTemplate.delete(key);
+            return;
+        }
+
+        String temporaryKey = key + ":refresh:" + System.nanoTime();
+        stringRedisTemplate.opsForSet().add(temporaryKey, qualifiedUsers.toArray(String[]::new));
+        stringRedisTemplate.expire(temporaryKey, ttl);
+        stringRedisTemplate.rename(temporaryKey, key);
     }
 
     private String modeKey(String roomId) {
@@ -78,5 +116,9 @@ public class RedisHotRoomManager implements HotRoomManager {
 
     private String accessKey(String roomId, long epochSecond) {
         return "auction:room:" + roomId + ":metrics:view:" + epochSecond;
+    }
+
+    private String qualificationKey(String roomId) {
+        return "auction:room:" + roomId + ":qualified";
     }
 }

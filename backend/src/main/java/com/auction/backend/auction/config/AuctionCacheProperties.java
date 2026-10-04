@@ -17,6 +17,12 @@ public class AuctionCacheProperties {
     private int hotAccessThreshold = 10;
     private Duration bidLockTtl = Duration.ofSeconds(5);
     private Duration walletTtl = Duration.ofHours(12);
+    private Duration bidRequestTtl = Duration.ofHours(2);
+    private String hotBidStreamKey = "auction:hot-bid:stream";
+    private String hotBidDeadLetterStreamKey = "auction:hot-bid:stream:dlq";
+    private long hotBidStreamMaxLength = 100_000;
+    private int hotBidStreamBatchSize = 500;
+    private long hotBidStreamPollIntervalMs = 100;
 
     public boolean isEnabled() {
         return enabled;
@@ -80,5 +86,53 @@ public class AuctionCacheProperties {
 
     public void setWalletTtl(Duration walletTtl) {
         this.walletTtl = walletTtl;
+    }
+
+    public Duration getBidRequestTtl() {
+        return bidRequestTtl;
+    }
+
+    public void setBidRequestTtl(Duration bidRequestTtl) {
+        this.bidRequestTtl = bidRequestTtl;
+    }
+
+    public String getHotBidStreamKey() {
+        return hotBidStreamKey;
+    }
+
+    public void setHotBidStreamKey(String hotBidStreamKey) {
+        this.hotBidStreamKey = hotBidStreamKey;
+    }
+
+    public String getHotBidDeadLetterStreamKey() {
+        return hotBidDeadLetterStreamKey;
+    }
+
+    public void setHotBidDeadLetterStreamKey(String hotBidDeadLetterStreamKey) {
+        this.hotBidDeadLetterStreamKey = hotBidDeadLetterStreamKey;
+    }
+
+    public long getHotBidStreamMaxLength() {
+        return hotBidStreamMaxLength;
+    }
+
+    public void setHotBidStreamMaxLength(long hotBidStreamMaxLength) {
+        this.hotBidStreamMaxLength = hotBidStreamMaxLength;
+    }
+
+    public int getHotBidStreamBatchSize() {
+        return hotBidStreamBatchSize;
+    }
+
+    public void setHotBidStreamBatchSize(int hotBidStreamBatchSize) {
+        this.hotBidStreamBatchSize = Math.max(1, hotBidStreamBatchSize);
+    }
+
+    public long getHotBidStreamPollIntervalMs() {
+        return hotBidStreamPollIntervalMs;
+    }
+
+    public void setHotBidStreamPollIntervalMs(long hotBidStreamPollIntervalMs) {
+        this.hotBidStreamPollIntervalMs = Math.max(1, hotBidStreamPollIntervalMs);
     }
 }

@@ -13,5 +13,7 @@ public interface HotRoomManager {
 
     void markHot(AuctionRoomSnapshot snapshot, List<AuctionLeaderboardEntry> leaderboard);
 
+    void cacheQualification(String roomId, String userId);
+
     void clear(String roomId);
 }

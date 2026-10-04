@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS auction_room (
     room_id VARCHAR(32) PRIMARY KEY,
     item_title VARCHAR(128) NOT NULL,
     anchor_name VARCHAR(64) NOT NULL,
+    anchor_user_id VARCHAR(32),
     image_url VARCHAR(512),
     start_price DECIMAL(12, 2) NOT NULL,
     step_price DECIMAL(12, 2) NOT NULL,
@@ -16,6 +17,9 @@ CREATE TABLE IF NOT EXISTS auction_room (
 );
 
 -- Backfill columns for existing MySQL/H2 tables created before qualification support.
+ALTER TABLE auction_room
+    ADD COLUMN IF NOT EXISTS anchor_user_id VARCHAR(32);
+
 ALTER TABLE auction_room
     ADD COLUMN IF NOT EXISTS registration_required BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -122,6 +126,7 @@ CREATE TABLE IF NOT EXISTS user_account (
     account VARCHAR(32) NOT NULL UNIQUE,
     password VARCHAR(64) NOT NULL,
     nickname VARCHAR(32) NOT NULL,
+    role VARCHAR(16) NOT NULL DEFAULT 'USER',
     avatar_url VARCHAR(512),
     bio VARCHAR(255),
     balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
@@ -129,6 +134,9 @@ CREATE TABLE IF NOT EXISTS user_account (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
+
+ALTER TABLE user_account
+    ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'USER';
 
 ALTER TABLE user_account
     ADD COLUMN IF NOT EXISTS balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00;

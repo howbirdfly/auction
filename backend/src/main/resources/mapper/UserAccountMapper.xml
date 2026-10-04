@@ -9,6 +9,7 @@
         <result property="account" column="account"/>
         <result property="password" column="password"/>
         <result property="nickname" column="nickname"/>
+        <result property="role" column="role"/>
         <result property="avatarUrl" column="avatar_url"/>
         <result property="bio" column="bio"/>
         <result property="balance" column="balance"/>
@@ -22,6 +23,7 @@
         account,
         password,
         nickname,
+        role,
         avatar_url,
         bio,
         balance,
@@ -71,6 +73,7 @@
             account,
             password,
             nickname,
+            role,
             avatar_url,
             bio,
             balance,
@@ -82,6 +85,7 @@
             #{account},
             #{password},
             #{nickname},
+            #{role},
             #{avatarUrl},
             #{bio},
             #{balance},

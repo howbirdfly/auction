@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Map;
 
 @Configuration
-@ConditionalOnProperty(name = "auction.persistence.rabbitmq.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "auction.persistence.rabbitmq.hot-bid-enabled", havingValue = "true")
 public class RabbitAuctionPersistenceConfig {
 
     @Bean

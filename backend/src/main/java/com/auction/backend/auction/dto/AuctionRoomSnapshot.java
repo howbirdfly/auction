@@ -11,6 +11,7 @@ public record AuctionRoomSnapshot(
         String roomId,
         String itemTitle,
         String anchorName,
+        String anchorUserId,
         String imageUrl,
         AuctionStatus status,
         BigDecimal startPrice,

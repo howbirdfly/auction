@@ -1,0 +1,13 @@
+bind 0.0.0.0
+protected-mode no
+port 26379
+daemonize no
+logfile ""
+
+requirepass sentinel123
+
+sentinel monitor auction-master __REDIS_HOST_IP__ 6379 2
+sentinel auth-pass auction-master auction123
+sentinel down-after-milliseconds auction-master 5000
+sentinel failover-timeout auction-master 60000
+sentinel parallel-syncs auction-master 1

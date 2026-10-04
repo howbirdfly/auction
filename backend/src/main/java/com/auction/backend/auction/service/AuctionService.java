@@ -18,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
@@ -31,20 +32,17 @@ public class AuctionService {
     private final AuctionBroadcastService broadcastService;
     private final AuctionRoomReadService auctionRoomReadService;
     private final BidEngineRouter bidEngineRouter;
-    private final BidRequestIdempotencyService bidRequestIdempotencyService;
-    private final BidRateLimitService bidRateLimitService;
     private final HotRoomManager hotRoomManager;
     private final AuctionQualificationService auctionQualificationService;
     private final AuctionWalletService auctionWalletService;
     private final AuctionSettlementService auctionSettlementService;
+    private final AtomicBoolean lobbyBroadcastPending = new AtomicBoolean(false);
 
     public AuctionService(AuctionRoomMapper auctionRoomMapper,
                           AuctionBidRecordMapper auctionBidRecordMapper,
                           AuctionBroadcastService broadcastService,
                           AuctionRoomReadService auctionRoomReadService,
                           BidEngineRouter bidEngineRouter,
-                          BidRequestIdempotencyService bidRequestIdempotencyService,
-                          BidRateLimitService bidRateLimitService,
                           HotRoomManager hotRoomManager,
                           AuctionQualificationService auctionQualificationService,
                           AuctionWalletService auctionWalletService,
@@ -54,8 +52,6 @@ public class AuctionService {
         this.broadcastService = broadcastService;
         this.auctionRoomReadService = auctionRoomReadService;
         this.bidEngineRouter = bidEngineRouter;
-        this.bidRequestIdempotencyService = bidRequestIdempotencyService;
-        this.bidRateLimitService = bidRateLimitService;
         this.hotRoomManager = hotRoomManager;
         this.auctionQualificationService = auctionQualificationService;
         this.auctionWalletService = auctionWalletService;
@@ -96,13 +92,16 @@ public class AuctionService {
     }
 
     @Transactional
-    public AuctionRoomSnapshot createRoom(CreateAuctionRequest request) {
+    public AuctionRoomSnapshot createRoom(CreateAuctionRequest request,
+                                          String anchorUserId,
+                                          String anchorName) {
         String roomId = "AR-" + roomSequence.incrementAndGet();
         boolean registrationRequired = auctionQualificationService.resolveRegistrationRequired(request.registrationRequired());
         AuctionRoom room = new AuctionRoom(
                 roomId,
                 request.itemTitle(),
-                request.anchorName(),
+                anchorName,
+                anchorUserId,
                 resolveImageUrl(request.imageUrl()),
                 request.startPrice(),
                 request.stepPrice(),
@@ -121,10 +120,13 @@ public class AuctionService {
     }
 
     @Transactional
-    public void deleteExpiredRoom(String roomId) {
+    public void deleteExpiredRoom(String roomId, String actorUserId, boolean admin) {
         AuctionRoom room = auctionRoomReadService.findRoom(roomId);
         if (room.getStatus() != AuctionStatus.CLOSED && Instant.now().isBefore(room.getEndsAt())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "only closed auction rooms can be deleted");
+        }
+        if (!admin && (room.getAnchorUserId() == null || !room.getAnchorUserId().equals(actorUserId))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "only the room owner can delete this room");
         }
 
         auctionBidRecordMapper.deleteByRoomId(roomId);
@@ -134,32 +136,25 @@ public class AuctionService {
         broadcastService.broadcastLobby(auctionRoomReadService.refreshLobbyCache());
     }
 
-    @Transactional
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
-        BidRequestIdempotencyService.BidRequestDecision decision = bidRequestIdempotencyService.begin(roomId, request);
-        if (!decision.accepted()) {
-            return auctionRoomReadService.getRoom(roomId);
-        }
-
-        AuctionRoomSnapshot snapshot;
-        try {
-            bidRateLimitService.assertAllowed(roomId, request.userId());
-            snapshot = bidEngineRouter.placeBid(roomId, request);
-            bidRequestIdempotencyService.markSuccess(request.requestId(), snapshot.version());
-        } catch (ResponseStatusException exception) {
-            bidRequestIdempotencyService.markFailed(request.requestId(), exception.getReason());
-            throw exception;
-        }
+        AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
 
         if (hotRoomManager.isHot(roomId)) {
             List<AuctionLeaderboardEntry> leaderboard = auctionRoomReadService.getLeaderboard(roomId);
-            hotRoomManager.markHot(snapshot, leaderboard);
             broadcastService.broadcastLeaderboard(snapshot, leaderboard);
         }
 
         broadcastService.broadcastRoom(snapshot);
-        broadcastService.broadcastLobby(auctionRoomReadService.refreshLobbyCache());
+        lobbyBroadcastPending.set(true);
         return snapshot;
+    }
+
+    @Scheduled(fixedDelay = 500)
+    public void flushLobbyBroadcast() {
+        if (!lobbyBroadcastPending.compareAndSet(true, false)) {
+            return;
+        }
+        broadcastService.broadcastLobby(auctionRoomReadService.refreshLobbyCache());
     }
 
     @Scheduled(fixedDelay = 1000)
@@ -288,6 +283,7 @@ public class AuctionService {
                 roomId,
                 itemTitle,
                 anchorName,
+                null,
                 imageUrl,
                 BigDecimal.valueOf(startPrice),
                 BigDecimal.valueOf(stepPrice),

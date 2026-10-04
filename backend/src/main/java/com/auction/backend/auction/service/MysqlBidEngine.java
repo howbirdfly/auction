@@ -27,6 +27,8 @@ public class MysqlBidEngine implements BidEngine {
     private final AuctionQualificationService auctionQualificationService;
     private final AuctionWalletService auctionWalletService;
     private final AuctionSettlementService auctionSettlementService;
+    private final BidRequestIdempotencyService bidRequestIdempotencyService;
+    private final BidRateLimitService bidRateLimitService;
 
     public MysqlBidEngine(AuctionRoomReadService auctionRoomReadService,
                           AuctionRoomMapper auctionRoomMapper,
@@ -34,7 +36,9 @@ public class MysqlBidEngine implements BidEngine {
                           AuctionCacheService auctionCacheService,
                           AuctionQualificationService auctionQualificationService,
                           AuctionWalletService auctionWalletService,
-                          AuctionSettlementService auctionSettlementService) {
+                                  AuctionSettlementService auctionSettlementService,
+                                  BidRequestIdempotencyService bidRequestIdempotencyService,
+                                  BidRateLimitService bidRateLimitService) {
         this.auctionRoomReadService = auctionRoomReadService;
         this.auctionRoomMapper = auctionRoomMapper;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
@@ -42,11 +46,30 @@ public class MysqlBidEngine implements BidEngine {
         this.auctionQualificationService = auctionQualificationService;
         this.auctionWalletService = auctionWalletService;
         this.auctionSettlementService = auctionSettlementService;
+        this.bidRequestIdempotencyService = bidRequestIdempotencyService;
+        this.bidRateLimitService = bidRateLimitService;
     }
 
     @Override
     @Transactional
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
+        BidRequestIdempotencyService.BidRequestDecision decision = bidRequestIdempotencyService.begin(roomId, request);
+        if (!decision.accepted()) {
+            return auctionRoomReadService.getRoom(roomId);
+        }
+
+        try {
+            bidRateLimitService.assertAllowed(roomId, request.userId());
+            AuctionRoomSnapshot snapshot = placeNewBid(roomId, request);
+            bidRequestIdempotencyService.markSuccess(request.requestId(), snapshot.version());
+            return snapshot;
+        } catch (ResponseStatusException exception) {
+            bidRequestIdempotencyService.markFailed(request.requestId(), exception.getReason());
+            throw exception;
+        }
+    }
+
+    private AuctionRoomSnapshot placeNewBid(String roomId, BidRequest request) {
         AuctionRoom room = auctionRoomReadService.findRoomForUpdate(roomId);
         validateRoomOpen(room, Instant.now());
         auctionQualificationService.assertEligibleToBid(room, request.userId());

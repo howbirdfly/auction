@@ -10,6 +10,9 @@ import com.auction.backend.auction.dto.CreateAuctionRequest;
 import com.auction.backend.auction.service.AuctionService;
 import com.auction.backend.auction.service.AuctionQualificationService;
 import com.auction.backend.common.ApiResponse;
+import com.auction.backend.security.AuctionPrincipal;
+import com.auction.backend.security.AuthorizationService;
+import com.auction.backend.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,11 +30,17 @@ public class AuctionController {
 
     private final AuctionService auctionService;
     private final AuctionQualificationService auctionQualificationService;
+    private final AuthorizationService authorizationService;
+    private final UserService userService;
 
     public AuctionController(AuctionService auctionService,
-                             AuctionQualificationService auctionQualificationService) {
+                             AuctionQualificationService auctionQualificationService,
+                             AuthorizationService authorizationService,
+                             UserService userService) {
         this.auctionService = auctionService;
         this.auctionQualificationService = auctionQualificationService;
+        this.authorizationService = authorizationService;
+        this.userService = userService;
     }
 
     @GetMapping
@@ -52,29 +61,38 @@ public class AuctionController {
     @GetMapping("/{roomId}/qualifications/{userId}")
     public ApiResponse<AuctionQualificationSnapshot> getQualification(@PathVariable String roomId,
                                                                       @PathVariable String userId) {
+        authorizationService.requireAccount(userId);
         return ApiResponse.success(auctionQualificationService.getQualification(roomId, userId));
     }
 
     @PostMapping("/{roomId}/registrations")
     public ApiResponse<AuctionRegistrationSnapshot> registerForAuction(@PathVariable String roomId,
                                                                        @Valid @RequestBody AuctionRegistrationRequest request) {
+        authorizationService.requireAccount(request.userId());
         return ApiResponse.success("auction registration created", auctionQualificationService.register(roomId, request));
     }
 
     @PostMapping
     public ApiResponse<AuctionRoomSnapshot> createRoom(@Valid @RequestBody CreateAuctionRequest request) {
-        return ApiResponse.success("auction room created", auctionService.createRoom(request));
+        AuctionPrincipal principal = authorizationService.requirePrincipal();
+        String currentNickname = userService.getUser(principal.getUserId()).nickname();
+        return ApiResponse.success(
+                "auction room created",
+                auctionService.createRoom(request, principal.getUserId(), currentNickname)
+        );
     }
 
     @PostMapping("/{roomId}/bids")
     public ApiResponse<AuctionRoomSnapshot> placeBid(@PathVariable String roomId,
                                                      @Valid @RequestBody BidRequest request) {
+        authorizationService.requireAccount(request.userId());
         return ApiResponse.success("bid accepted", auctionService.placeBid(roomId, request));
     }
 
     @DeleteMapping("/{roomId}")
     public ApiResponse<Void> deleteExpiredRoom(@PathVariable String roomId) {
-        auctionService.deleteExpiredRoom(roomId);
+        AuctionPrincipal principal = authorizationService.requirePrincipal();
+        auctionService.deleteExpiredRoom(roomId, principal.getUserId(), principal.isAdmin());
         return ApiResponse.success("expired auction room deleted", null);
     }
 }

@@ -6,6 +6,7 @@ import java.time.Instant;
 public record UserProfileSnapshot(
         String userId,
         String account,
+        String role,
         String nickname,
         String avatarUrl,
         String bio,

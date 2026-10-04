@@ -26,6 +26,11 @@ spring:
 
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: strict
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
@@ -50,9 +55,16 @@ auction:
       hot-access-threshold: 10
       bid-lock-ttl: 5s
       wallet-ttl: 12h
+      bid-request-ttl: 2h
+      hot-bid-stream-key: auction:hot-bid:stream
+      hot-bid-dead-letter-stream-key: auction:hot-bid:stream:dlq
+      hot-bid-stream-max-length: 100000
+      hot-bid-stream-batch-size: 500
+      hot-bid-stream-poll-interval-ms: 100
   persistence:
     rabbitmq:
       enabled: false
+      hot-bid-enabled: false
       exchange: auction.hot-bid.exchange
       queue: auction.hot-bid.persist.queue
       routing-key: auction.hot-bid.persist

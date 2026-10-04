@@ -9,6 +9,7 @@ public class UserAccount {
     private String account;
     private String password;
     private String nickname;
+    private String role;
     private String avatarUrl;
     private String bio;
     private BigDecimal balance;
@@ -23,6 +24,7 @@ public class UserAccount {
                        String account,
                        String password,
                        String nickname,
+                       String role,
                        String avatarUrl,
                        String bio,
                        BigDecimal balance,
@@ -33,6 +35,7 @@ public class UserAccount {
         this.account = account;
         this.password = password;
         this.nickname = nickname;
+        this.role = role;
         this.avatarUrl = avatarUrl;
         this.bio = bio;
         this.balance = balance;
@@ -71,6 +74,14 @@ public class UserAccount {
 
     public void setNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public String getAvatarUrl() {

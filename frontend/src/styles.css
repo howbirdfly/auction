@@ -588,6 +588,7 @@ button {
 
 .timeline,
 .stack-form,
+.auth-form,
 .history-room-list,
 .user-profile-card,
 .profile-overview-card,
@@ -1119,6 +1120,60 @@ button {
 
 .profile-account-switcher select {
   width: 100%;
+}
+
+.profile-account-summary {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-account-summary span,
+.auth-hint {
+  color: #7d8696;
+  font-size: 0.92rem;
+}
+
+.profile-account-summary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-account-summary small {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e8f5ee;
+  color: #166534;
+  font-weight: 800;
+}
+
+.auth-card {
+  gap: 14px;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border-radius: 16px;
+  background: #f2f5fa;
+}
+
+.auth-tabs button {
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #667085;
+  font-weight: 800;
+}
+
+.auth-tabs button.active {
+  background: #ffffff;
+  color: #20242c;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .profile-avatar {

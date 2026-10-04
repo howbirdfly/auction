@@ -1,0 +1,202 @@
+name: auction-redis-ha
+
+services:
+  redis-master:
+    image: redis:7.4-alpine
+    container_name: auction-redis-master
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --requirepass
+      - auction123
+      - --masterauth
+      - auction123
+      - --replica-announce-ip
+      - ${REDIS_HOST_IP:-192.168.3.59}
+      - --replica-announce-port
+      - "6379"
+      - --min-replicas-to-write
+      - "1"
+      - --min-replicas-max-lag
+      - "1"
+    ports:
+      - "6379:6379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.11
+    volumes:
+      - redis-master-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a auction123 ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-replica-1:
+    image: redis:7.4-alpine
+    container_name: auction-redis-replica-1
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --requirepass
+      - auction123
+      - --masterauth
+      - auction123
+      - --replicaof
+      - 172.30.0.11
+      - "6379"
+      - --replica-read-only
+      - "yes"
+      - --replica-announce-ip
+      - ${REDIS_HOST_IP:-192.168.3.59}
+      - --replica-announce-port
+      - "6380"
+    ports:
+      - "6380:6379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.12
+    volumes:
+      - redis-replica-1-data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a auction123 ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-replica-2:
+    image: redis:7.4-alpine
+    container_name: auction-redis-replica-2
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --requirepass
+      - auction123
+      - --masterauth
+      - auction123
+      - --replicaof
+      - 172.30.0.11
+      - "6379"
+      - --replica-read-only
+      - "yes"
+      - --replica-announce-ip
+      - ${REDIS_HOST_IP:-192.168.3.59}
+      - --replica-announce-port
+      - "6381"
+    ports:
+      - "6381:6379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.13
+    volumes:
+      - redis-replica-2-data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a auction123 ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  sentinel-1:
+    image: redis:7.4-alpine
+    container_name: auction-redis-sentinel-1
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - sed "s/__REDIS_HOST_IP__/$${REDIS_HOST_IP}/g" /etc/redis/sentinel.conf.template > /tmp/sentinel.conf && exec redis-server /tmp/sentinel.conf --sentinel
+    environment:
+      REDIS_HOST_IP: ${REDIS_HOST_IP:-192.168.3.59}
+    ports:
+      - "26379:26379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.21
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
+        condition: service_healthy
+
+  sentinel-2:
+    image: redis:7.4-alpine
+    container_name: auction-redis-sentinel-2
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - sed "s/__REDIS_HOST_IP__/$${REDIS_HOST_IP}/g" /etc/redis/sentinel.conf.template > /tmp/sentinel.conf && exec redis-server /tmp/sentinel.conf --sentinel
+    environment:
+      REDIS_HOST_IP: ${REDIS_HOST_IP:-192.168.3.59}
+    ports:
+      - "26380:26379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.22
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
+        condition: service_healthy
+
+  sentinel-3:
+    image: redis:7.4-alpine
+    container_name: auction-redis-sentinel-3
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - sed "s/__REDIS_HOST_IP__/$${REDIS_HOST_IP}/g" /etc/redis/sentinel.conf.template > /tmp/sentinel.conf && exec redis-server /tmp/sentinel.conf --sentinel
+    environment:
+      REDIS_HOST_IP: ${REDIS_HOST_IP:-192.168.3.59}
+    ports:
+      - "26381:26379"
+    networks:
+      auction-redis-ha:
+        ipv4_address: 172.30.0.23
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
+        condition: service_healthy
+
+volumes:
+  redis-master-data:
+  redis-replica-1-data:
+  redis-replica-2-data:
+
+networks:
+  auction-redis-ha:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

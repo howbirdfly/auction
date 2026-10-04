@@ -27,6 +27,11 @@ public class NoOpHotRoomManager implements HotRoomManager {
     }
 
     @Override
+    public void cacheQualification(String roomId, String userId) {
+        // Redis-based hot room routing is disabled for the current environment.
+    }
+
+    @Override
     public void clear(String roomId) {
         // Redis-based hot room routing is disabled for the current environment.
     }

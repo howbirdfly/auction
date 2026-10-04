@@ -344,6 +344,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                 room.roomId(),
                 room.itemTitle(),
                 room.anchorName(),
+                room.anchorUserId(),
                 room.imageUrl(),
                 room.status(),
                 room.startPrice(),
@@ -385,6 +386,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
             state.put("roomId", room.roomId());
             state.put("itemTitle", room.itemTitle());
             state.put("anchorName", room.anchorName());
+            state.put("anchorUserId", room.anchorUserId() == null ? "" : room.anchorUserId());
             state.put("imageUrl", room.imageUrl());
             state.put("status", room.status().name());
             state.put("startPrice", room.startPrice().toPlainString());
@@ -420,6 +422,7 @@ public class RedisAuctionCacheService implements AuctionCacheService {
                     readStateValue(state, "roomId"),
                     readStateValue(state, "itemTitle"),
                     readStateValue(state, "anchorName"),
+                    emptyToNull(readStateValue(state, "anchorUserId")),
                     readStateValue(state, "imageUrl"),
                     status,
                     new BigDecimal(readStateValue(state, "startPrice")),

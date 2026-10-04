@@ -7,13 +7,15 @@ import {
   createRoomCoverUploadPolicy,
   fetchLeaderboard,
   fetchQualification,
+  fetchCurrentUser,
   fetchRoom,
   fetchRooms,
-  fetchUser,
   fetchUserAuctionHistory,
-  fetchUsers,
   fetchWalletTransactions,
+  loginUser,
+  logoutUser,
   rechargeUser,
+  registerUser,
   registerForAuction,
   updateUser,
   uploadAvatarToOss,
@@ -22,8 +24,6 @@ import { createAuctionSocket } from "./socket";
 
 const DEFAULT_IMAGE = "https://placehold.co/800x600/f6f7fb/1f2937?text=Auction+Room";
 const DEFAULT_AVATAR = "https://placehold.co/256x256/f3f4f6/111827?text=User";
-const CURRENT_USER_STORAGE_KEY = "auction-current-user-id";
-
 const CHANNELS = [
   "\u5173\u6ce8",
   "\u63a8\u8350",
@@ -42,7 +42,6 @@ const CATEGORIES = [
 const state = {
   rooms: [],
   users: [],
-  currentUserId: localStorage.getItem(CURRENT_USER_STORAGE_KEY) || null,
   currentUser: null,
   userAuctionHistory: null,
   userAuctionHistoryUserId: null,
@@ -51,6 +50,8 @@ const state = {
   walletTransactionsUserId: null,
   walletTransactionsLoading: false,
   profileHistoryTab: "created",
+  profileAuthMode: "login",
+  profileAuthSubmitting: false,
   profileEditorOpen: false,
   profileRechargeOpen: false,
   profileWalletOpen: false,
@@ -184,36 +185,19 @@ function getCurrentUser() {
   return state.currentUser;
 }
 
-function syncCurrentUser() {
-  if (!state.users.length) {
-    state.currentUser = null;
-    state.currentUserId = null;
-    state.userAuctionHistory = null;
-    state.userAuctionHistoryUserId = null;
-    state.userAuctionHistoryLoading = false;
-    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-    return;
-  }
-
-  const matched =
-    state.users.find((user) => user.userId === state.currentUserId) ||
-    state.users.find((user) => user.account === "u10001") ||
-    state.users[0];
-
-  state.currentUser = matched;
-  state.currentUserId = matched.userId;
-  localStorage.setItem(CURRENT_USER_STORAGE_KEY, matched.userId);
-}
-
-function setCurrentUser(userId) {
-  state.currentUserId = userId;
-  syncCurrentUser();
+function setAuthenticatedUser(user) {
+  state.currentUser = user;
+  state.users = user ? [user] : [];
+  state.selectedRoomQualification = null;
   invalidateUserAuctionHistory();
   invalidateWalletTransactions();
-  renderPage();
-  if (state.activeTab === "profile") {
-    refreshUserAuctionHistory(true);
-  }
+}
+
+function clearAuthenticatedUser() {
+  setAuthenticatedUser(null);
+  state.profileEditorOpen = false;
+  state.profileRechargeOpen = false;
+  state.profileWalletOpen = false;
 }
 
 async function refreshCurrentUser() {
@@ -222,9 +206,8 @@ async function refreshCurrentUser() {
     return;
   }
 
-  const updatedUser = await fetchUser(currentUser.userId);
-  state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
-  syncCurrentUser();
+  const updatedUser = await fetchCurrentUser();
+  setAuthenticatedUser(updatedUser);
 }
 
 function invalidateUserAuctionHistory() {
@@ -1151,13 +1134,63 @@ function renderProfileView() {
   if (!currentUser) {
     screenEl.innerHTML = `
       <section class="profile-screen">
-        <section class="profile-card">
-          <p class="eyebrow">个人中心</p>
-          <h1>个人主页</h1>
-          <p>后端用户接口已经接好了，但当前还没有可用账号。</p>
+        <section class="profile-card auth-card">
+          <p class="eyebrow">账号安全</p>
+          <h1>${state.profileAuthMode === "login" ? "登录竞拍账号" : "注册新账号"}</h1>
+          <p>出价、报名、充值和资料管理都需要登录后操作。</p>
+          <div class="auth-tabs">
+            <button
+              type="button"
+              class="${state.profileAuthMode === "login" ? "active" : ""}"
+              data-auth-mode="login"
+            >登录</button>
+            <button
+              type="button"
+              class="${state.profileAuthMode === "register" ? "active" : ""}"
+              data-auth-mode="register"
+            >注册</button>
+          </div>
+          ${
+            state.profileAuthMode === "login"
+              ? `
+                <form id="loginForm" class="stack-form auth-form">
+                  <input name="account" autocomplete="username" placeholder="账号" required />
+                  <input name="password" type="password" autocomplete="current-password" placeholder="密码" required />
+                  <button type="submit" ${state.profileAuthSubmitting ? "disabled" : ""}>
+                    ${state.profileAuthSubmitting ? "正在登录..." : "登录"}
+                  </button>
+                </form>
+                <p class="auth-hint">演示账号：u10001 / 123456</p>
+              `
+              : `
+                <form id="registerForm" class="stack-form auth-form">
+                  <input name="account" autocomplete="username" placeholder="账号，最多 32 位" required />
+                  <input name="nickname" placeholder="昵称" required />
+                  <input
+                    name="password"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="6"
+                    placeholder="密码，至少 6 位"
+                    required
+                  />
+                  <button type="submit" ${state.profileAuthSubmitting ? "disabled" : ""}>
+                    ${state.profileAuthSubmitting ? "正在注册..." : "注册并登录"}
+                  </button>
+                </form>
+              `
+          }
         </section>
       </section>
     `;
+    screenEl.querySelectorAll("[data-auth-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.profileAuthMode = button.dataset.authMode;
+        renderPage();
+      });
+    });
+    screenEl.querySelector("#loginForm")?.addEventListener("submit", handleLogin);
+    screenEl.querySelector("#registerForm")?.addEventListener("submit", handleRegister);
     return;
   }
 
@@ -1173,24 +1206,16 @@ function renderProfileView() {
         </div>
 
         <div class="profile-overview-actions">
-          <label class="profile-account-switcher">
+          <div class="profile-account-summary">
             <span>当前账号</span>
-            <select id="currentUserSelect">
-              ${state.users
-                .map(
-                  (user) => `
-                    <option value="${user.userId}" ${user.userId === currentUser.userId ? "selected" : ""}>
-                      ${user.nickname} · @${user.account}
-                    </option>
-                  `,
-                )
-                .join("")}
-            </select>
-          </label>
+            <strong>${currentUser.nickname} · @${currentUser.account}</strong>
+            ${currentUser.role === "ADMIN" ? "<small>管理员</small>" : ""}
+          </div>
           <div class="profile-action-buttons">
             <button class="ghost-button" id="openProfileRechargeButton">充值</button>
             <button class="ghost-button" id="openProfileWalletButton">资金明细</button>
             <button class="ghost-button" id="openProfileEditorButton">编辑个人资料</button>
+            <button class="ghost-button danger-button" id="logoutButton">退出登录</button>
           </div>
         </div>
       </section>
@@ -1430,9 +1455,7 @@ function renderProfileView() {
     </section>
   `;
 
-  screenEl.querySelector("#currentUserSelect")?.addEventListener("change", (event) => {
-    setCurrentUser(event.target.value);
-  });
+  screenEl.querySelector("#logoutButton")?.addEventListener("click", handleLogout);
   screenEl.querySelector("#changeAvatarButton")?.addEventListener("click", () => {
     screenEl.querySelector("#avatarFileInput")?.click();
   });
@@ -1714,9 +1737,16 @@ async function loadRooms() {
   }
 }
 
-async function loadUsers() {
-  state.users = await fetchUsers();
-  syncCurrentUser();
+async function loadCurrentUser() {
+  try {
+    setAuthenticatedUser(await fetchCurrentUser());
+  } catch (error) {
+    if (error.status === 401) {
+      clearAuthenticatedUser();
+      return;
+    }
+    throw error;
+  }
 }
 
 async function loadSelectedRoom(roomId) {
@@ -1849,6 +1879,69 @@ async function handleRoomCoverSelected(event) {
   }
 }
 
+async function handleLogin(event) {
+  event.preventDefault();
+  if (state.profileAuthSubmitting) {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  state.profileAuthSubmitting = true;
+  renderPage();
+
+  try {
+    const user = await loginUser(payload);
+    setAuthenticatedUser(user);
+    setFeedback(`已登录：${user.nickname}`);
+    await refreshUserAuctionHistory(true);
+  } catch (error) {
+    setFeedback(error.message, true);
+  } finally {
+    state.profileAuthSubmitting = false;
+    renderPage();
+  }
+}
+
+async function handleRegister(event) {
+  event.preventDefault();
+  if (state.profileAuthSubmitting) {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  state.profileAuthSubmitting = true;
+  renderPage();
+
+  try {
+    const user = await registerUser(payload);
+    setAuthenticatedUser(user);
+    setFeedback("注册成功，已自动登录");
+    await refreshUserAuctionHistory(true);
+  } catch (error) {
+    setFeedback(error.message, true);
+  } finally {
+    state.profileAuthSubmitting = false;
+    renderPage();
+  }
+}
+
+async function handleLogout() {
+  try {
+    await logoutUser();
+  } catch (error) {
+    if (error.status !== 401) {
+      setFeedback(error.message, true);
+      return;
+    }
+  }
+
+  clearAuthenticatedUser();
+  setFeedback("已退出登录");
+  renderPage();
+}
+
 async function handleUpdateProfile(event) {
   event.preventDefault();
   const currentUser = getCurrentUser();
@@ -1866,8 +1959,7 @@ async function handleUpdateProfile(event) {
 
   try {
     const updatedUser = await updateUser(currentUser.userId, payload);
-    state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
-    syncCurrentUser();
+    setAuthenticatedUser(updatedUser);
     invalidateUserAuctionHistory();
 
     if (state.selectedRoom && state.selectedRoom.leaderNickname === currentUser.nickname) {
@@ -1906,8 +1998,7 @@ async function handleRecharge(event) {
 
   try {
     const updatedUser = await rechargeUser(currentUser.userId, payload);
-    state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
-    syncCurrentUser();
+    setAuthenticatedUser(updatedUser);
     form.reset();
     state.profileRechargeOpen = false;
     invalidateWalletTransactions();
@@ -1954,8 +2045,7 @@ async function handleAvatarSelected(event) {
       bio: currentUser.bio || "",
     });
 
-    state.users = state.users.map((user) => (user.userId === updatedUser.userId ? updatedUser : user));
-    syncCurrentUser();
+    setAuthenticatedUser(updatedUser);
     setFeedback("\u5934\u50cf\u5df2\u66f4\u65b0");
     renderPage();
   } catch (error) {
@@ -2036,7 +2126,7 @@ async function handleDeleteRoom(roomId) {
 
 async function bootstrap() {
   try {
-    await Promise.all([loadRooms(), loadUsers()]);
+    await Promise.all([loadRooms(), loadCurrentUser()]);
     renderPage();
   } catch (error) {
     setFeedback(error.message, true);
@@ -2045,7 +2135,7 @@ async function bootstrap() {
 
 async function refreshRoomsSilently() {
   try {
-    await Promise.all([loadRooms(), loadUsers()]);
+    await loadRooms();
 
     if (state.activeTab !== "home") {
       return;
@@ -2060,6 +2150,15 @@ async function refreshRoomsSilently() {
     // Keep the current UI when background refresh fails.
   }
 }
+
+window.addEventListener("auction-auth-expired", () => {
+  if (!state.currentUser) {
+    return;
+  }
+  clearAuthenticatedUser();
+  setFeedback("登录状态已失效，请重新登录", true);
+  renderPage();
+});
 
 bottomNavItems.forEach((item) => {
   item.addEventListener("click", async () => {

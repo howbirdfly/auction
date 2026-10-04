@@ -8,6 +8,7 @@ public class AuctionRoom {
     private String roomId;
     private String itemTitle;
     private String anchorName;
+    private String anchorUserId;
     private String imageUrl;
     private BigDecimal startPrice;
     private BigDecimal stepPrice;
@@ -26,6 +27,7 @@ public class AuctionRoom {
     public AuctionRoom(String roomId,
                        String itemTitle,
                        String anchorName,
+                       String anchorUserId,
                        String imageUrl,
                        BigDecimal startPrice,
                        BigDecimal stepPrice,
@@ -36,6 +38,7 @@ public class AuctionRoom {
         this.roomId = roomId;
         this.itemTitle = itemTitle;
         this.anchorName = anchorName;
+        this.anchorUserId = anchorUserId;
         this.imageUrl = imageUrl;
         this.startPrice = startPrice;
         this.stepPrice = stepPrice;
@@ -69,6 +72,14 @@ public class AuctionRoom {
 
     public void setAnchorName(String anchorName) {
         this.anchorName = anchorName;
+    }
+
+    public String getAnchorUserId() {
+        return anchorUserId;
+    }
+
+    public void setAnchorUserId(String anchorUserId) {
+        this.anchorUserId = anchorUserId;
     }
 
     public String getImageUrl() {

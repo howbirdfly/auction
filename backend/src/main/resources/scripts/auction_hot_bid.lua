@@ -2,6 +2,10 @@ local stateKey = KEYS[1]
 local leaderboardKey = KEYS[2]
 local leaderboardProfileKey = KEYS[3]
 local recentBidKey = KEYS[4]
+local qualifiedUserKey = KEYS[5]
+local requestKey = KEYS[6]
+local rateLimitKey = KEYS[7]
+local eventStreamKey = KEYS[8]
 
 local statusClosed = ARGV[1]
 local nowMillis = tonumber(ARGV[2])
@@ -11,19 +15,57 @@ local amount = tonumber(ARGV[5])
 local hotBufferSeconds = tonumber(ARGV[6])
 local walletKeyPrefix = ARGV[7]
 local walletTtlSeconds = tonumber(ARGV[8])
+local requestId = ARGV[9]
+local rateLimitMillis = tonumber(ARGV[10])
+local requestTtlMillis = tonumber(ARGV[11])
+local eventId = ARGV[12]
+local roomId = ARGV[13]
+local maxStreamLength = tonumber(ARGV[14])
+
+local function reject(errorCode, errorDetail)
+    redis.call("SET", requestKey, "FAILED", "PX", requestTtlMillis)
+    if errorDetail then
+        return "ERR|" .. errorCode .. "|" .. errorDetail
+    end
+    return "ERR|" .. errorCode
+end
+
+local existingRequest = redis.call("GET", requestKey)
+if existingRequest then
+    if existingRequest == "OK" then
+        return "DUP|OK"
+    end
+    return reject("REQUEST_ALREADY_USED")
+end
+
+redis.call("SET", requestKey, "PROCESSING", "PX", requestTtlMillis)
 
 if redis.call("EXISTS", stateKey) == 0 then
+    redis.call("DEL", requestKey)
     return "ERR|ROOM_MISSING"
 end
 
 local status = redis.call("HGET", stateKey, "status")
 if status == statusClosed then
-    return "ERR|ROOM_CLOSED"
+    return reject("ROOM_CLOSED")
 end
 
 local endsAtMillis = tonumber(redis.call("HGET", stateKey, "endsAtEpochMilli"))
 if nowMillis > endsAtMillis then
-    return "ERR|ROOM_EXPIRED"
+    return reject("ROOM_EXPIRED")
+end
+
+if rateLimitMillis > 0 then
+    local rateLimitTtl = redis.call("PTTL", rateLimitKey)
+    if rateLimitTtl > 0 then
+        return reject("RATE_LIMITED", tostring(rateLimitTtl))
+    end
+    redis.call("SET", rateLimitKey, "1", "PX", rateLimitMillis)
+end
+
+local registrationRequired = redis.call("HGET", stateKey, "registrationRequired")
+if registrationRequired == "true" and redis.call("SISMEMBER", qualifiedUserKey, userId) == 0 then
+    return reject("NOT_QUALIFIED")
 end
 
 local startPrice = tonumber(redis.call("HGET", stateKey, "startPrice"))
@@ -39,7 +81,7 @@ end
 
 local bidderWalletKey = walletKeyPrefix .. userId
 if redis.call("EXISTS", bidderWalletKey) == 0 then
-    return "ERR|BIDDER_WALLET_MISSING"
+    return reject("BIDDER_WALLET_MISSING")
 end
 
 local bidderBalance = tonumber(redis.call("HGET", bidderWalletKey, "balance")) or 0
@@ -58,11 +100,11 @@ if bidCount > 0 then
 end
 
 if amount < minNextBid then
-    return "ERR|BID_TOO_LOW|" .. string.format("%.2f", minNextBid)
+    return reject("BID_TOO_LOW", string.format("%.2f", minNextBid))
 end
 
 if bidderBalance < requiredReserve then
-    return "ERR|INSUFFICIENT_FUNDS|" .. string.format("%.2f", requiredReserve)
+    return reject("INSUFFICIENT_FUNDS", string.format("%.2f", requiredReserve))
 end
 
 if previousLeaderUserId ~= "" and previousLeaderUserId ~= userId and previousAmount > 0 then
@@ -121,5 +163,32 @@ local recentBidPayload = cjson.encode({
 redis.call("LPUSH", recentBidKey, recentBidPayload)
 redis.call("LTRIM", recentBidKey, 0, 9)
 redis.call("EXPIRE", recentBidKey, ttlSeconds)
+
+local eventPayload = cjson.encode({
+    eventId = eventId,
+    requestId = requestId,
+    roomId = roomId,
+    userId = userId,
+    nickname = nickname,
+    amount = string.format("%.2f", amount),
+    previousLeaderUserId = previousLeaderUserId,
+    previousAmount = string.format("%.2f", previousAmount),
+    roomVersion = newVersion,
+    bidTimeEpochMilli = nowMillis,
+    endsAtEpochMilli = endsAtMillis,
+    roomStatus = status
+})
+redis.call(
+    "XADD",
+    eventStreamKey,
+    "MAXLEN",
+    "~",
+    maxStreamLength,
+    "*",
+    "payload",
+    eventPayload
+)
+
+redis.call("SET", requestKey, "OK", "PX", requestTtlMillis)
 
 return "OK|" .. tostring(endsAtMillis) .. "|" .. tostring(newBidCount) .. "|" .. string.format("%.2f", newMinNextBid) .. "|" .. tostring(newVersion) .. "|" .. previousLeaderUserId .. "|" .. string.format("%.2f", previousAmount)
