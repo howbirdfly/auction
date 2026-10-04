@@ -155,7 +155,7 @@ The actual value is limited by the measured `44.45 bid/s`.
 The target upgrade threshold:
 
 ```text
-44.45 * 0.55 ≈ 24.5, rounded to 25 bid/s
+44.45 * 0.55 ~= 24.5, rounded to 25 bid/s
 ```
 
 This keeps the cold path below roughly 56% utilization before switching the
