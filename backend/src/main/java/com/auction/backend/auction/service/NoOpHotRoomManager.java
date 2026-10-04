@@ -17,7 +17,22 @@ public class NoOpHotRoomManager implements HotRoomManager {
     }
 
     @Override
+    public boolean recordBid(String roomId) {
+        return false;
+    }
+
+    @Override
     public boolean isHot(String roomId) {
+        return false;
+    }
+
+    @Override
+    public HotRoomStatus status(String roomId) {
+        return HotRoomStatus.COLD;
+    }
+
+    @Override
+    public boolean shouldStayHot(String roomId) {
         return false;
     }
 

@@ -12,6 +12,8 @@ public interface AuctionBidRecordMapper {
 
     int insert(AuctionBidRecordEntity bidRecord);
 
+    int insertBatch(@Param("records") List<AuctionBidRecordEntity> records);
+
     AuctionBidRecordEntity findByEventId(@Param("eventId") String eventId);
 
     AuctionBidRecordEntity findByRequestId(@Param("requestId") String requestId);

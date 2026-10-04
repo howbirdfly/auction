@@ -63,6 +63,12 @@ public class RedisBidEngine implements BidEngine {
                 .orElseGet(() -> prewarmHotRoomState(roomId));
         Instant now = Instant.now();
         validateRoomOpen(cachedRoom, now);
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(auctionCacheProperties.getHotBidBackpressureKey()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "hot auction persistence backlog is too high"
+            );
+        }
 
         String expectedPreviousLeaderUserId = !cachedRoom.recentBids().isEmpty()
                 ? cachedRoom.recentBids().get(0).userId()

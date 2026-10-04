@@ -5,17 +5,30 @@ import com.auction.backend.auction.mapper.AuctionBidRecordMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.redis.connection.Limit;
+import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.PendingMessage;
+import org.springframework.data.redis.connection.stream.PendingMessages;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.net.InetAddress;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 @ConditionalOnProperty(name = "auction.cache.redis.enabled", havingValue = "true")
@@ -30,6 +43,8 @@ public class RedisHotBidStreamPersistenceService {
     private final HotBidPersistenceLogService hotBidPersistenceLogService;
     private final AuctionBidRecordMapper auctionBidRecordMapper;
     private final JsonMapper jsonMapper;
+    private final String consumerName;
+    private final AtomicLong lastRedisWarningAt = new AtomicLong(0L);
 
     public RedisHotBidStreamPersistenceService(StringRedisTemplate stringRedisTemplate,
                                                AuctionCacheProperties auctionCacheProperties,
@@ -43,11 +58,15 @@ public class RedisHotBidStreamPersistenceService {
         this.hotBidPersistenceLogService = hotBidPersistenceLogService;
         this.auctionBidRecordMapper = auctionBidRecordMapper;
         this.jsonMapper = jsonMapper;
+        this.consumerName = buildConsumerName();
     }
 
     @Scheduled(fixedDelayString = "${auction.cache.redis.hot-bid-stream-poll-interval-ms:100}")
     public void consumePendingEvents() {
-        consumeBatch(auctionCacheProperties.getHotBidStreamBatchSize());
+        consumeBatch(
+                auctionCacheProperties.getHotBidStreamBatchSize(),
+                auctionCacheProperties.getHotBidStreamPendingTimeout()
+        );
     }
 
     public boolean catchUpRoom(String roomId, long targetVersion) {
@@ -59,7 +78,10 @@ public class RedisHotBidStreamPersistenceService {
             if (currentPersistedVersion(roomId) >= targetVersion) {
                 return true;
             }
-            int processed = consumeBatch(auctionCacheProperties.getHotBidStreamBatchSize());
+            int processed = consumeBatch(
+                    auctionCacheProperties.getHotBidStreamBatchSize(),
+                    Duration.ZERO
+            );
             if (processed == 0) {
                 break;
             }
@@ -67,77 +89,255 @@ public class RedisHotBidStreamPersistenceService {
         return currentPersistedVersion(roomId) >= targetVersion;
     }
 
-    public synchronized int consumeBatch(int batchSize) {
-        List<MapRecord<String, Object, Object>> records;
+    public HotBidStreamStatus status() {
         try {
-            StreamOperations<String, Object, Object> streamOperations = stringRedisTemplate.opsForStream();
-            records = streamOperations.range(
-                    auctionCacheProperties.getHotBidStreamKey(),
-                    org.springframework.data.domain.Range.unbounded(),
-                    Limit.limit().count(batchSize)
+            ensureGroup();
+            Long streamSize = stringRedisTemplate.opsForStream()
+                    .size(auctionCacheProperties.getHotBidStreamKey());
+            long pendingCount = stringRedisTemplate.opsForStream()
+                    .pending(
+                            auctionCacheProperties.getHotBidStreamKey(),
+                            auctionCacheProperties.getHotBidStreamGroup()
+                    )
+                    .getTotalPendingMessages();
+            return new HotBidStreamStatus(
+                    auctionCacheProperties.getHotBidStreamGroup(),
+                    consumerName,
+                    streamSize == null ? 0L : streamSize,
+                    pendingCount
             );
         } catch (RuntimeException exception) {
-            log.warn("Failed to read hot bid persistence stream", exception);
+            log.warn("Failed to read hot bid stream status", exception);
+            return new HotBidStreamStatus(
+                    auctionCacheProperties.getHotBidStreamGroup(),
+                    consumerName,
+                    0L,
+                    0L
+            );
+        }
+    }
+
+    public synchronized int consumeBatch(int batchSize, Duration pendingTimeout) {
+        if (!ensureGroup()) {
+            return 0;
+        }
+        updateBackpressureState();
+
+        List<MapRecord<String, Object, Object>> records = readNewRecords(batchSize);
+        List<MapRecord<String, Object, Object>> pendingRecords = claimPendingRecords(
+                batchSize,
+                pendingTimeout == null ? Duration.ZERO : pendingTimeout
+        );
+
+        Map<RecordId, MapRecord<String, Object, Object>> uniqueRecords = new LinkedHashMap<>();
+        records.forEach(record -> uniqueRecords.put(record.getId(), record));
+        pendingRecords.forEach(record -> uniqueRecords.put(record.getId(), record));
+
+        if (uniqueRecords.isEmpty()) {
             return 0;
         }
 
-        if (records == null || records.isEmpty()) {
+        return processRecords(new ArrayList<>(uniqueRecords.values()));
+    }
+
+    private List<MapRecord<String, Object, Object>> readNewRecords(int batchSize) {
+        try {
+            return stringRedisTemplate.opsForStream().read(
+                    Consumer.from(
+                            auctionCacheProperties.getHotBidStreamGroup(),
+                            consumerName
+                    ),
+                    StreamReadOptions.empty().count(batchSize),
+                    StreamOffset.create(
+                            auctionCacheProperties.getHotBidStreamKey(),
+                            ReadOffset.lastConsumed()
+                    )
+            );
+        } catch (RuntimeException exception) {
+            warnThrottled("Failed to read new hot bid stream events", exception);
+            return List.of();
+        }
+    }
+
+    private List<MapRecord<String, Object, Object>> claimPendingRecords(int batchSize,
+                                                                       Duration pendingTimeout) {
+        try {
+            PendingMessages pendingMessages = stringRedisTemplate.opsForStream().pending(
+                    auctionCacheProperties.getHotBidStreamKey(),
+                    auctionCacheProperties.getHotBidStreamGroup(),
+                    Range.unbounded(),
+                    batchSize,
+                    pendingTimeout
+            );
+            if (pendingMessages == null || pendingMessages.isEmpty()) {
+                return List.of();
+            }
+
+            RecordId[] recordIds = pendingMessages.stream()
+                    .map(PendingMessage::getId)
+                    .toArray(RecordId[]::new);
+            return stringRedisTemplate.opsForStream().claim(
+                    auctionCacheProperties.getHotBidStreamKey(),
+                    auctionCacheProperties.getHotBidStreamGroup(),
+                    consumerName,
+                    pendingTimeout,
+                    recordIds
+            );
+        } catch (RuntimeException exception) {
+            warnThrottled("Failed to claim pending hot bid stream events", exception);
+            return List.of();
+        }
+    }
+
+    private int processRecords(List<MapRecord<String, Object, Object>> records) {
+        List<PreparedEvent> preparedEvents = new ArrayList<>();
+        for (MapRecord<String, Object, Object> record : records) {
+            PreparedEvent preparedEvent = prepareEvent(record);
+            if (preparedEvent != null) {
+                preparedEvents.add(preparedEvent);
+            }
+        }
+
+        if (preparedEvents.isEmpty()) {
             return 0;
+        }
+
+        try {
+            List<HotBidPersistenceMessage> messages = preparedEvents.stream()
+                    .map(PreparedEvent::message)
+                    .toList();
+            messages.forEach(hotBidPersistenceLogService::markProcessing);
+            hotBidPersistenceStore.persistBatch(messages);
+            messages.forEach(hotBidPersistenceLogService::markSuccess);
+            preparedEvents.forEach(event -> acknowledge(event.recordId()));
+            return preparedEvents.size();
+        } catch (RuntimeException batchException) {
+            log.warn("Hot bid batch persistence failed, retrying events individually", batchException);
         }
 
         int processed = 0;
-        for (MapRecord<String, Object, Object> record : records) {
-            if (processRecord(record)) {
+        for (PreparedEvent preparedEvent : preparedEvents) {
+            if (processSingleEvent(preparedEvent)) {
                 processed++;
             }
         }
         return processed;
     }
 
-    private boolean processRecord(MapRecord<String, Object, Object> record) {
-        String lockKey = "auction:hot-bid:consume:" + record.getId().getValue();
-        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(30));
-        if (!Boolean.TRUE.equals(acquired)) {
-            return false;
-        }
-
+    private PreparedEvent prepareEvent(MapRecord<String, Object, Object> record) {
         Object rawPayload = record.getValue().get("payload");
         if (rawPayload == null || rawPayload.toString().isBlank()) {
             moveToDeadLetter(record.getId().getValue(), "", "missing payload");
-            deleteRecord(record.getId().getValue());
-            releaseLock(lockKey);
-            return true;
+            acknowledge(record.getId());
+            return null;
         }
 
         String payload = rawPayload.toString();
-        HotBidPersistenceMessage message;
         try {
-            message = jsonMapper.readValue(payload, HotBidPersistenceEventPayload.class)
-                    .toMessage();
+            HotBidPersistenceMessage message = jsonMapper.readValue(
+                    payload,
+                    HotBidPersistenceEventPayload.class
+            ).toMessage();
+            return new PreparedEvent(record.getId(), message);
         } catch (Exception exception) {
             log.error("Failed to parse hot bid stream event {}", record.getId(), exception);
             moveToDeadLetter(record.getId().getValue(), payload, exception.getMessage());
-            deleteRecord(record.getId().getValue());
-            releaseLock(lockKey);
-            return true;
+            acknowledge(record.getId());
+            return null;
         }
+    }
 
+    private boolean processSingleEvent(PreparedEvent preparedEvent) {
         try {
-            hotBidPersistenceLogService.markProcessing(message);
-            hotBidPersistenceStore.persist(message);
-            hotBidPersistenceLogService.markSuccess(message);
-            deleteRecord(record.getId().getValue());
-            releaseLock(lockKey);
+            hotBidPersistenceLogService.markProcessing(preparedEvent.message());
+            hotBidPersistenceStore.persist(preparedEvent.message());
+            hotBidPersistenceLogService.markSuccess(preparedEvent.message());
+            acknowledge(preparedEvent.recordId());
             return true;
-        } catch (Exception exception) {
-            log.error("Failed to persist hot bid stream event {}", record.getId(), exception);
+        } catch (RuntimeException exception) {
+            log.error("Failed to persist hot bid stream event {}", preparedEvent.recordId(), exception);
             try {
-                hotBidPersistenceLogService.markFailed(message, exception);
-            } catch (Exception ignored) {
-                // Keep the stream entry so the next scheduler pass can retry.
+                hotBidPersistenceLogService.markFailed(preparedEvent.message(), exception);
+            } catch (RuntimeException ignored) {
+                // Leave the message pending so the next claim can retry it.
             }
-            releaseLock(lockKey);
             return false;
+        }
+    }
+
+    private boolean ensureGroup() {
+        String streamKey = auctionCacheProperties.getHotBidStreamKey();
+        String groupName = auctionCacheProperties.getHotBidStreamGroup();
+        try {
+            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(streamKey))) {
+                return false;
+            }
+            stringRedisTemplate.opsForStream().createGroup(
+                    streamKey,
+                    ReadOffset.from("0-0"),
+                    groupName
+            );
+            return true;
+        } catch (RuntimeException exception) {
+            if (isBusyGroup(exception)) {
+                return true;
+            }
+            warnThrottled("Failed to ensure hot bid stream consumer group", exception);
+            return false;
+        }
+    }
+
+    private void warnThrottled(String message, RuntimeException exception) {
+        long now = System.currentTimeMillis();
+        long previous = lastRedisWarningAt.get();
+        if (now - previous >= 30_000 && lastRedisWarningAt.compareAndSet(previous, now)) {
+            log.warn(message, exception);
+        }
+    }
+
+    private boolean isBusyGroup(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current.getClass().getSimpleName().contains("RedisBusyException")
+                    || current.getMessage() != null && current.getMessage().contains("BUSYGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private void updateBackpressureState() {
+        try {
+            long pendingCount = stringRedisTemplate.opsForStream()
+                    .pending(
+                            auctionCacheProperties.getHotBidStreamKey(),
+                            auctionCacheProperties.getHotBidStreamGroup()
+                    )
+                    .getTotalPendingMessages();
+            if (pendingCount > auctionCacheProperties.getHotBidStreamMaxBacklog()) {
+                stringRedisTemplate.opsForValue().set(
+                        auctionCacheProperties.getHotBidBackpressureKey(),
+                        Long.toString(pendingCount),
+                        Duration.ofSeconds(10)
+                );
+            } else {
+                stringRedisTemplate.delete(auctionCacheProperties.getHotBidBackpressureKey());
+            }
+        } catch (RuntimeException exception) {
+            warnThrottled("Failed to update hot bid backpressure state", exception);
+        }
+    }
+
+    private void acknowledge(RecordId recordId) {
+        try {
+            stringRedisTemplate.opsForStream().acknowledge(
+                    auctionCacheProperties.getHotBidStreamKey(),
+                    auctionCacheProperties.getHotBidStreamGroup(),
+                    recordId
+            );
+        } catch (RuntimeException exception) {
+            log.warn("Failed to acknowledge hot bid stream event {}", recordId, exception);
         }
     }
 
@@ -156,27 +356,19 @@ public class RedisHotBidStreamPersistenceService {
         }
     }
 
-    private void deleteRecord(String recordId) {
-        try {
-            stringRedisTemplate.opsForStream().delete(
-                    auctionCacheProperties.getHotBidStreamKey(),
-                    recordId
-            );
-        } catch (RuntimeException exception) {
-            log.warn("Failed to delete persisted hot bid stream event {}", recordId, exception);
-        }
-    }
-
-    private void releaseLock(String lockKey) {
-        try {
-            stringRedisTemplate.delete(lockKey);
-        } catch (RuntimeException exception) {
-            log.warn("Failed to release hot bid stream record lock {}", lockKey, exception);
-        }
-    }
-
     private long currentPersistedVersion(String roomId) {
         Long version = auctionBidRecordMapper.findMaxVersionByRoomId(roomId);
         return version == null ? 0L : version;
+    }
+
+    private String buildConsumerName() {
+        try {
+            return InetAddress.getLocalHost().getHostName() + "-" + ProcessHandle.current().pid();
+        } catch (Exception exception) {
+            return "auction-backend-" + ProcessHandle.current().pid();
+        }
+    }
+
+    private record PreparedEvent(RecordId recordId, HotBidPersistenceMessage message) {
     }
 }

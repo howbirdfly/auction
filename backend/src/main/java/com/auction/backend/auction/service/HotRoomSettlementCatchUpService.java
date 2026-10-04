@@ -28,14 +28,19 @@ public class HotRoomSettlementCatchUpService {
     }
 
     public boolean isReadyForSettlement(AuctionRoom room) {
-        if (!hotRoomManager.isHot(room.getRoomId())) {
+        HotRoomStatus status = hotRoomManager.status(room.getRoomId());
+        if (status == HotRoomStatus.COLD) {
             return true;
+        }
+        if (status == HotRoomStatus.REDIS_UNAVAILABLE) {
+            return false;
         }
 
         Optional<AuctionRoomSnapshot> hotSnapshot = auctionCacheService.getRoom(room.getRoomId());
-        long targetVersion = hotSnapshot
-                .map(this::targetBidVersion)
-                .orElseGet(() -> targetBidVersion(room));
+        if (hotSnapshot.isEmpty()) {
+            return false;
+        }
+        long targetVersion = targetBidVersion(hotSnapshot.get());
 
         RedisHotBidStreamPersistenceService streamPersistenceService =
                 redisHotBidStreamPersistenceServiceProvider.getIfAvailable();
@@ -52,10 +57,4 @@ public class HotRoomSettlementCatchUpService {
         return snapshot.version();
     }
 
-    private long targetBidVersion(AuctionRoom room) {
-        if (room.getStatus() == AuctionStatus.CLOSED) {
-            return Math.max(0L, room.getVersion() - 1L);
-        }
-        return room.getVersion();
-    }
 }

@@ -31,5 +31,7 @@ public interface AuctionRoomMapper {
                      @Param("status") AuctionStatus status,
                      @Param("version") long version);
 
+    int updateEngineMode(@Param("roomId") String roomId, @Param("engineMode") String engineMode);
+
     int deleteById(@Param("roomId") String roomId);
 }

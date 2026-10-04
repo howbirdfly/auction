@@ -9,7 +9,13 @@ public interface HotRoomManager {
 
     boolean recordAccess(String roomId);
 
+    boolean recordBid(String roomId);
+
     boolean isHot(String roomId);
+
+    HotRoomStatus status(String roomId);
+
+    boolean shouldStayHot(String roomId);
 
     void markHot(AuctionRoomSnapshot snapshot, List<AuctionLeaderboardEntry> leaderboard);
 

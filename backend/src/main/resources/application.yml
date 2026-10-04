@@ -52,15 +52,23 @@ auction:
       room-ttl: 30m
       leaderboard-ttl: 30m
       hot-room-buffer: 10m
-      hot-access-threshold: 10
+      hot-access-threshold: 30
+      hot-bid-enter-threshold: 30
+      hot-bid-exit-threshold: 8
+      hot-bid-enter-window: 5s
+      hot-bid-exit-window: 60s
       bid-lock-ttl: 5s
       wallet-ttl: 12h
       bid-request-ttl: 2h
       hot-bid-stream-key: auction:hot-bid:stream
       hot-bid-dead-letter-stream-key: auction:hot-bid:stream:dlq
+      hot-bid-stream-group: auction-hot-bid-persist
       hot-bid-stream-max-length: 100000
       hot-bid-stream-batch-size: 500
       hot-bid-stream-poll-interval-ms: 100
+      hot-bid-stream-pending-timeout: 30s
+      hot-bid-stream-max-backlog: 5000
+      hot-bid-backpressure-key: auction:hot-bid:stream:backpressure
   persistence:
     rabbitmq:
       enabled: false

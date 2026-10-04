@@ -31,7 +31,7 @@ class BidEngineRouterTest {
     void routesHotRoomsToRedis() {
         BidRequest request = request("hot-bid");
         AuctionRoomSnapshot expected = mock(AuctionRoomSnapshot.class);
-        when(hotRoomManager.isHot("AR-1")).thenReturn(true);
+        when(hotRoomManager.status("AR-1")).thenReturn(HotRoomStatus.HOT);
         when(redisProvider.getIfAvailable()).thenReturn(redisBidEngine);
         when(redisBidEngine.placeBid("AR-1", request)).thenReturn(expected);
 
@@ -45,7 +45,7 @@ class BidEngineRouterTest {
     void routesColdRoomsToMysql() {
         BidRequest request = request("cold-bid");
         AuctionRoomSnapshot expected = mock(AuctionRoomSnapshot.class);
-        when(hotRoomManager.isHot("AR-2")).thenReturn(false);
+        when(hotRoomManager.status("AR-2")).thenReturn(HotRoomStatus.COLD);
         when(mysqlBidEngine.placeBid("AR-2", request)).thenReturn(expected);
 
         assertThat(router.placeBid("AR-2", request)).isSameAs(expected);
@@ -55,23 +55,22 @@ class BidEngineRouterTest {
     }
 
     @Test
-    void fallsBackToMysqlWhenRedisBeanIsUnavailable() {
+    void failsClosedWhenRedisBeanIsUnavailableForHotRoom() {
         BidRequest request = request("redis-disabled");
-        AuctionRoomSnapshot expected = mock(AuctionRoomSnapshot.class);
-        when(hotRoomManager.isHot("AR-3")).thenReturn(true);
+        when(hotRoomManager.status("AR-3")).thenReturn(HotRoomStatus.HOT);
         when(redisProvider.getIfAvailable()).thenReturn(null);
-        when(mysqlBidEngine.placeBid("AR-3", request)).thenReturn(expected);
 
-        assertThat(router.placeBid("AR-3", request)).isSameAs(expected);
+        assertThatThrownBy(() -> router.placeBid("AR-3", request))
+                .hasMessageContaining("hot auction engine is unavailable");
 
-        verify(mysqlBidEngine).placeBid("AR-3", request);
+        verify(mysqlBidEngine, never()).placeBid("AR-3", request);
     }
 
     @Test
     void doesNotSilentlyFallbackWhenRedisBidFails() {
         BidRequest request = request("redis-failure");
         IllegalStateException failure = new IllegalStateException("redis unavailable");
-        when(hotRoomManager.isHot("AR-4")).thenReturn(true);
+        when(hotRoomManager.status("AR-4")).thenReturn(HotRoomStatus.HOT);
         when(redisProvider.getIfAvailable()).thenReturn(redisBidEngine);
         when(redisBidEngine.placeBid("AR-4", request)).thenThrow(failure);
 
@@ -79,6 +78,18 @@ class BidEngineRouterTest {
                 .isSameAs(failure);
 
         verify(mysqlBidEngine, never()).placeBid("AR-4", request);
+    }
+
+    @Test
+    void failsClosedWhileRedisIsUnavailable() {
+        BidRequest request = request("redis-unavailable");
+        when(hotRoomManager.status("AR-5")).thenReturn(HotRoomStatus.REDIS_UNAVAILABLE);
+
+        assertThatThrownBy(() -> router.placeBid("AR-5", request))
+                .hasMessageContaining("temporarily unavailable");
+
+        verify(mysqlBidEngine, never()).placeBid("AR-5", request);
+        verify(redisBidEngine, never()).placeBid("AR-5", request);
     }
 
     private BidRequest request(String requestId) {

@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS auction_room (
     deposit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
     ends_at TIMESTAMP NOT NULL,
     status VARCHAR(16) NOT NULL,
-    version BIGINT NOT NULL DEFAULT 0
+    version BIGINT NOT NULL DEFAULT 0,
+    engine_mode VARCHAR(16) NOT NULL DEFAULT 'MYSQL'
 );
 
 CREATE TABLE IF NOT EXISTS auction_bid_record (

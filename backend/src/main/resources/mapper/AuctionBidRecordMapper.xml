@@ -38,6 +38,31 @@
         )
     </insert>
 
+    <insert id="insertBatch">
+        insert into auction_bid_record (
+            event_id,
+            request_id,
+            room_id,
+            user_id,
+            nickname,
+            amount,
+            bid_version,
+            bid_time
+        ) values
+        <foreach collection="records" item="record" separator=",">
+            (
+                #{record.eventId},
+                #{record.requestId},
+                #{record.roomId},
+                #{record.userId},
+                #{record.nickname},
+                #{record.amount},
+                #{record.bidVersion},
+                #{record.bidTime}
+            )
+        </foreach>
+    </insert>
+
     <select id="findByEventId" resultMap="AuctionBidRecordResultMap">
         select id, event_id, request_id, room_id, user_id, nickname, amount, bid_version, bid_time
         from auction_bid_record

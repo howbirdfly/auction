@@ -20,6 +20,7 @@ public class AuctionRoom {
     private Instant endsAt;
     private AuctionStatus status;
     private long version;
+    private String engineMode;
 
     public AuctionRoom() {
     }
@@ -168,6 +169,14 @@ public class AuctionRoom {
 
     public void setVersion(long version) {
         this.version = version;
+    }
+
+    public String getEngineMode() {
+        return engineMode;
+    }
+
+    public void setEngineMode(String engineMode) {
+        this.engineMode = engineMode;
     }
 
     public boolean hasLeader() {

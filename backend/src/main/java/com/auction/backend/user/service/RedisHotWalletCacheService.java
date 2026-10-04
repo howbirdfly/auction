@@ -35,17 +35,21 @@ public class RedisHotWalletCacheService implements HotWalletCacheService {
 
     @Override
     public void prewarmAccountIfNeeded(String account) {
-        if (account == null || account.isBlank() || hasWalletKey(account.trim())) {
-            return;
-        }
+        try {
+            if (account == null || account.isBlank() || hasWalletKey(account.trim())) {
+                return;
+            }
 
-        UserAccount userAccount = userAccountMapper.findByAccount(account.trim());
-        if (userAccount == null) {
-            return;
-        }
+            UserAccount userAccount = userAccountMapper.findByAccount(account.trim());
+            if (userAccount == null) {
+                return;
+            }
 
-        initializeWalletIfNeeded(userAccount);
-        writeWallet(userAccount);
+            initializeWalletIfNeeded(userAccount);
+            writeWallet(userAccount);
+        } catch (RuntimeException ignored) {
+            // Wallet reads and writes can fall back to MySQL while Redis recovers.
+        }
     }
 
     @Override
@@ -65,16 +69,21 @@ public class RedisHotWalletCacheService implements HotWalletCacheService {
             return userAccount;
         }
 
-        Map<Object, Object> cachedWallet = stringRedisTemplate.opsForHash().entries(walletKey(userAccount.getAccount()));
-        if (cachedWallet == null || cachedWallet.isEmpty()) {
-            return userAccount;
-        }
+        try {
+            Map<Object, Object> cachedWallet = stringRedisTemplate.opsForHash()
+                    .entries(walletKey(userAccount.getAccount()));
+            if (cachedWallet == null || cachedWallet.isEmpty()) {
+                return userAccount;
+            }
 
-        userAccount.setBalance(new BigDecimal(readValue(cachedWallet, "balance", "0.00")));
-        userAccount.setFrozenAmount(new BigDecimal(readValue(cachedWallet, "frozenAmount", "0.00")));
-        String updatedAtEpochMilli = readValue(cachedWallet, "updatedAtEpochMilli", "");
-        if (!updatedAtEpochMilli.isBlank()) {
-            userAccount.setUpdatedAt(Instant.ofEpochMilli(Long.parseLong(updatedAtEpochMilli)));
+            userAccount.setBalance(new BigDecimal(readValue(cachedWallet, "balance", "0.00")));
+            userAccount.setFrozenAmount(new BigDecimal(readValue(cachedWallet, "frozenAmount", "0.00")));
+            String updatedAtEpochMilli = readValue(cachedWallet, "updatedAtEpochMilli", "");
+            if (!updatedAtEpochMilli.isBlank()) {
+                userAccount.setUpdatedAt(Instant.ofEpochMilli(Long.parseLong(updatedAtEpochMilli)));
+            }
+        } catch (RuntimeException ignored) {
+            // Return the MySQL snapshot when Redis is unavailable.
         }
         return userAccount;
     }
@@ -84,12 +93,16 @@ public class RedisHotWalletCacheService implements HotWalletCacheService {
         if (userAccount == null || userAccount.getAccount() == null || userAccount.getAccount().isBlank()) {
             return;
         }
-        if (!hasWalletKey(userAccount.getAccount())) {
-            return;
-        }
+        try {
+            if (!hasWalletKey(userAccount.getAccount())) {
+                return;
+            }
 
-        initializeWalletIfNeeded(userAccount);
-        writeWallet(userAccount);
+            initializeWalletIfNeeded(userAccount);
+            writeWallet(userAccount);
+        } catch (RuntimeException ignored) {
+            // Redis synchronization is best effort; MySQL remains authoritative.
+        }
     }
 
     @Override
@@ -100,19 +113,23 @@ public class RedisHotWalletCacheService implements HotWalletCacheService {
         }
 
         for (String account : uniqueAccounts(accounts)) {
-            if (!hasWalletKey(account)) {
-                continue;
-            }
+            try {
+                if (!hasWalletKey(account)) {
+                    continue;
+                }
 
-            UserAccount userAccount = userAccountMapper.findByAccountForUpdate(account);
-            if (userAccount == null) {
-                continue;
-            }
+                UserAccount userAccount = userAccountMapper.findByAccountForUpdate(account);
+                if (userAccount == null) {
+                    continue;
+                }
 
-            overlayWallet(userAccount);
-            userAccount.setUpdatedAt(Instant.now());
-            userAccountMapper.updateWallet(userAccount);
-            writeWallet(userAccount);
+                overlayWallet(userAccount);
+                userAccount.setUpdatedAt(Instant.now());
+                userAccountMapper.updateWallet(userAccount);
+                writeWallet(userAccount);
+            } catch (RuntimeException ignored) {
+                // Redis synchronization is best effort; MySQL remains authoritative.
+            }
         }
     }
 
@@ -127,7 +144,11 @@ public class RedisHotWalletCacheService implements HotWalletCacheService {
     }
 
     private boolean hasWalletKey(String account) {
-        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(walletKey(account)));
+        try {
+            return Boolean.TRUE.equals(stringRedisTemplate.hasKey(walletKey(account)));
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private void writeWallet(UserAccount userAccount) {
