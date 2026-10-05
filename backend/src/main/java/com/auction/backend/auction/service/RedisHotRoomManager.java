@@ -16,12 +16,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 @ConditionalOnProperty(name = "auction.cache.redis.enabled", havingValue = "true")
@@ -36,37 +31,32 @@ public class RedisHotRoomManager implements HotRoomManager {
     private final AuctionCacheProperties auctionCacheProperties;
     private final AuctionRoomRegistrationMapper auctionRoomRegistrationMapper;
     private final AuctionRoomMapper auctionRoomMapper;
-    private final Map<String, ConcurrentSkipListMap<Long, AtomicLong>> bidMetrics = new ConcurrentHashMap<>();
-    private final Map<String, ConcurrentSkipListMap<Long, AtomicLong>> viewMetrics = new ConcurrentHashMap<>();
+    private final RedisHotRoomRateTracker rateTracker;
 
     public RedisHotRoomManager(StringRedisTemplate stringRedisTemplate,
                                AuctionCacheService auctionCacheService,
                                AuctionCacheProperties auctionCacheProperties,
                                AuctionRoomRegistrationMapper auctionRoomRegistrationMapper,
-                               AuctionRoomMapper auctionRoomMapper) {
+                               AuctionRoomMapper auctionRoomMapper,
+                               RedisHotRoomRateTracker rateTracker) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.auctionCacheService = auctionCacheService;
         this.auctionCacheProperties = auctionCacheProperties;
         this.auctionRoomRegistrationMapper = auctionRoomRegistrationMapper;
         this.auctionRoomMapper = auctionRoomMapper;
+        this.rateTracker = rateTracker;
     }
 
     @Override
     public boolean recordAccess(String roomId) {
-        long second = Instant.now().getEpochSecond();
-        recordMetric(viewMetrics, roomId, second, Duration.ofSeconds(3));
-        return sumWindow(viewMetrics, roomId, 1, Duration.ofSeconds(3))
+        return rateTracker.recordView(roomId)
                 >= auctionCacheProperties.getHotAccessThreshold();
     }
 
     @Override
     public boolean recordBid(String roomId) {
-        long second = Instant.now().getEpochSecond();
-        recordMetric(bidMetrics, roomId, second, auctionCacheProperties.getHotBidEnterWindow());
-        long bidCount = sumWindow(
-                bidMetrics,
+        long bidCount = rateTracker.recordBid(
                 roomId,
-                auctionCacheProperties.getHotBidEnterWindow().toSeconds(),
                 auctionCacheProperties.getHotBidEnterWindow()
         );
         long required = (long) auctionCacheProperties.getHotBidEnterThreshold()
@@ -99,10 +89,8 @@ public class RedisHotRoomManager implements HotRoomManager {
     @Override
     public boolean shouldStayHot(String roomId) {
         try {
-            long bidCount = sumWindow(
-                    bidMetrics,
+            long bidCount = rateTracker.countBids(
                     roomId,
-                    auctionCacheProperties.getHotBidExitWindow().toSeconds(),
                     auctionCacheProperties.getHotBidExitWindow()
             );
             if (bidCount == 0L) {
@@ -155,8 +143,7 @@ public class RedisHotRoomManager implements HotRoomManager {
 
     @Override
     public void clear(String roomId) {
-        bidMetrics.remove(roomId);
-        viewMetrics.remove(roomId);
+        rateTracker.clear(roomId);
         try {
             auctionRoomMapper.updateEngineMode(roomId, ENGINE_MYSQL);
         } catch (Exception exception) {
@@ -175,37 +162,6 @@ public class RedisHotRoomManager implements HotRoomManager {
         return room != null && ENGINE_REDIS.equalsIgnoreCase(room.getEngineMode())
                 ? HotRoomStatus.REDIS_UNAVAILABLE
                 : HotRoomStatus.COLD;
-    }
-
-    private void recordMetric(Map<String, ConcurrentSkipListMap<Long, AtomicLong>> metrics,
-                              String roomId,
-                              long second,
-                              Duration retention) {
-        ConcurrentSkipListMap<Long, AtomicLong> roomMetrics = metrics.computeIfAbsent(
-                roomId,
-                ignored -> new ConcurrentSkipListMap<>()
-        );
-        roomMetrics.computeIfAbsent(second, ignored -> new AtomicLong()).incrementAndGet();
-        long cutoff = second - Math.max(5, retention.toSeconds() * 2);
-        roomMetrics.headMap(cutoff, true).clear();
-    }
-
-    private long sumWindow(Map<String, ConcurrentSkipListMap<Long, AtomicLong>> metrics,
-                           String roomId,
-                           long seconds,
-                           Duration retention) {
-        ConcurrentSkipListMap<Long, AtomicLong> roomMetrics = metrics.get(roomId);
-        if (roomMetrics == null || roomMetrics.isEmpty()) {
-            return 0L;
-        }
-        long now = Instant.now().getEpochSecond();
-        long cutoff = now - Math.max(0, seconds - 1);
-        long total = 0L;
-        for (Map.Entry<Long, AtomicLong> entry : roomMetrics.tailMap(cutoff).entrySet()) {
-            total += entry.getValue().get();
-        }
-        roomMetrics.headMap(now - Math.max(5, retention.toSeconds() * 2), true).clear();
-        return total;
     }
 
     private void refreshQualifications(String roomId, Duration ttl) {

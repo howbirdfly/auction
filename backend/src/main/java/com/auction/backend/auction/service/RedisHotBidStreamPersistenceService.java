@@ -12,6 +12,7 @@ import org.springframework.data.redis.connection.stream.PendingMessage;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamInfo;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -92,27 +93,30 @@ public class RedisHotBidStreamPersistenceService {
     public HotBidStreamStatus status() {
         try {
             ensureGroup();
-            Long streamSize = stringRedisTemplate.opsForStream()
-                    .size(auctionCacheProperties.getHotBidStreamKey());
-            long pendingCount = stringRedisTemplate.opsForStream()
-                    .pending(
-                            auctionCacheProperties.getHotBidStreamKey(),
-                            auctionCacheProperties.getHotBidStreamGroup()
-                    )
-                    .getTotalPendingMessages();
+            StreamBacklog backlog = readStreamBacklog();
             return new HotBidStreamStatus(
                     auctionCacheProperties.getHotBidStreamGroup(),
                     consumerName,
-                    streamSize == null ? 0L : streamSize,
-                    pendingCount
+                    backlog.lastDeliveredId(),
+                    backlog.streamSize(),
+                    backlog.pendingCount(),
+                    backlog.lag(),
+                    backlog.totalBacklog(),
+                    Boolean.TRUE.equals(stringRedisTemplate.hasKey(
+                            auctionCacheProperties.getHotBidBackpressureKey()
+                    ))
             );
         } catch (RuntimeException exception) {
             log.warn("Failed to read hot bid stream status", exception);
             return new HotBidStreamStatus(
                     auctionCacheProperties.getHotBidStreamGroup(),
                     consumerName,
+                    null,
                     0L,
-                    0L
+                    0L,
+                    0L,
+                    0L,
+                    false
             );
         }
     }
@@ -307,25 +311,69 @@ public class RedisHotBidStreamPersistenceService {
         return false;
     }
 
-    private void updateBackpressureState() {
+    void updateBackpressureState() {
         try {
-            long pendingCount = stringRedisTemplate.opsForStream()
-                    .pending(
-                            auctionCacheProperties.getHotBidStreamKey(),
-                            auctionCacheProperties.getHotBidStreamGroup()
-                    )
-                    .getTotalPendingMessages();
-            if (pendingCount > auctionCacheProperties.getHotBidStreamMaxBacklog()) {
+            StreamBacklog backlog = readStreamBacklog();
+            if (backlog.totalBacklog() > auctionCacheProperties.getHotBidStreamMaxBacklog()) {
                 stringRedisTemplate.opsForValue().set(
                         auctionCacheProperties.getHotBidBackpressureKey(),
-                        Long.toString(pendingCount),
-                        Duration.ofSeconds(10)
+                        "total=" + backlog.totalBacklog()
+                                + ",pending=" + backlog.pendingCount()
+                                + ",lag=" + backlog.lag()
                 );
             } else {
                 stringRedisTemplate.delete(auctionCacheProperties.getHotBidBackpressureKey());
             }
         } catch (RuntimeException exception) {
             warnThrottled("Failed to update hot bid backpressure state", exception);
+        }
+    }
+
+    private StreamBacklog readStreamBacklog() {
+        Long streamSize = stringRedisTemplate.opsForStream()
+                .size(auctionCacheProperties.getHotBidStreamKey());
+        StreamInfo.XInfoGroup group = findStreamGroup();
+        long pendingCount = group == null || group.pendingCount() == null
+                ? 0L
+                : group.pendingCount();
+        long lag = extractLag(group);
+        return new StreamBacklog(
+                group == null ? null : group.lastDeliveredId(),
+                streamSize == null ? 0L : streamSize,
+                pendingCount,
+                lag
+        );
+    }
+
+    private StreamInfo.XInfoGroup findStreamGroup() {
+        StreamInfo.XInfoGroups groups = stringRedisTemplate.opsForStream()
+                .groups(auctionCacheProperties.getHotBidStreamKey());
+        if (groups == null) {
+            return null;
+        }
+        return groups.stream()
+                .filter(group -> auctionCacheProperties.getHotBidStreamGroup()
+                        .equals(group.groupName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private long extractLag(StreamInfo.XInfoGroup group) {
+        if (group == null || group.getRaw() == null) {
+            return 0L;
+        }
+        Object rawLag = group.getRaw().get("lag");
+        if (rawLag instanceof Number number) {
+            return number.longValue();
+        }
+        if (rawLag == null || rawLag.toString().isBlank()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(rawLag.toString());
+        } catch (NumberFormatException exception) {
+            log.warn("Failed to parse hot bid stream lag value {}", rawLag);
+            return 0L;
         }
     }
 
@@ -370,5 +418,15 @@ public class RedisHotBidStreamPersistenceService {
     }
 
     private record PreparedEvent(RecordId recordId, HotBidPersistenceMessage message) {
+    }
+
+    private record StreamBacklog(String lastDeliveredId,
+                                 long streamSize,
+                                 long pendingCount,
+                                 long lag) {
+
+        long totalBacklog() {
+            return pendingCount + lag;
+        }
     }
 }

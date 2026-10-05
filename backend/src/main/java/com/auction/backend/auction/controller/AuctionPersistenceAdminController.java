@@ -51,7 +51,16 @@ public class AuctionPersistenceAdminController {
         if (streamPersistenceService == null) {
             return ApiResponse.success(
                     "redis stream persistence is disabled",
-                    new HotBidStreamStatus("disabled", "disabled", 0L, 0L)
+                    new HotBidStreamStatus(
+                            "disabled",
+                            "disabled",
+                            null,
+                            0L,
+                            0L,
+                            0L,
+                            0L,
+                            false
+                    )
             );
         }
         return ApiResponse.success(streamPersistenceService.status());
