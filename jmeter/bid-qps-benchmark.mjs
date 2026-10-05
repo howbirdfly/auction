@@ -80,6 +80,9 @@ function percentile(values, ratio) {
 }
 
 async function runStage(stageQps) {
+  if (mode === "hot-single") {
+    return runHotSingleStage(stageQps);
+  }
   if (mode === "multi") {
     return runMultiRoomStage(stageQps);
   }
@@ -90,6 +93,125 @@ async function runStage(stageQps) {
     return runThresholdStage(stageQps);
   }
   return runContentionStage(stageQps);
+}
+
+async function promoteHotRoom(roomId) {
+  const preheatQps = Number(process.env.BENCHMARK_PREHEAT_QPS ?? "50");
+  const preheatSeconds = Number(process.env.BENCHMARK_PREHEAT_SECONDS ?? "7");
+  const intervalMs = 1000 / preheatQps;
+  const latencies = [];
+  let amount = 2;
+  let nextRequestAt = performance.now();
+  let promotionMs = null;
+  const startedAt = performance.now();
+
+  while ((performance.now() - startedAt) / 1000 < preheatSeconds) {
+    const now = performance.now();
+    if (nextRequestAt > now) {
+      await new Promise((resolve) => setTimeout(resolve, nextRequestAt - now));
+    }
+
+    const requestStartedAt = performance.now();
+    try {
+      const response = await request(`/auctions/${roomId}/bids`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestId: `preheat-${roomId}-${amount}-${Date.now()}`,
+          userId: benchmarkAccount,
+          nickname: "Benchmark Preheat",
+          amount,
+        }),
+      });
+      amount += 1;
+      if (promotionMs == null && response?.hot === true) {
+        promotionMs = performance.now() - startedAt;
+      }
+    } catch {
+      // A preheat request can lose the race with a later amount; keep the loop moving.
+    } finally {
+      latencies.push(performance.now() - requestStartedAt);
+      const elapsedAfterRequest = performance.now() - startedAt;
+      nextRequestAt = Math.max(
+        elapsedAfterRequest + intervalMs,
+        nextRequestAt + intervalMs
+      );
+    }
+  }
+
+  if (promotionMs == null) {
+    throw new Error(`room ${roomId} did not enter HOT during preheat`);
+  }
+  return {
+    preheatQps,
+    preheatSeconds,
+    promotionMs,
+    preheatRequests: latencies.length,
+    preheatP95Ms: percentile(latencies, 0.95),
+  };
+}
+
+async function runHotSingleStage(targetQps, roomId, stageIndex, runSeconds = durationSeconds) {
+  const intervalMs = 1000 / targetQps;
+  const totalRequests = Math.max(1, Math.round(runSeconds * targetQps));
+  const tasks = [];
+  const latencies = [];
+  const statuses = new Map();
+  const amount = 10_000 + (stageIndex + 1) * 10_000;
+  let inFlight = 0;
+  let maxInFlight = 0;
+
+  const stageStartedAt = performance.now();
+  for (let index = 0; index < totalRequests; index += 1) {
+    const delayMs = index * intervalMs;
+    const task = new Promise((resolve) => {
+      setTimeout(async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        const requestStartedAt = performance.now();
+        let status = 0;
+        try {
+          await request(`/auctions/${roomId}/bids`, {
+            method: "POST",
+            body: JSON.stringify({
+              requestId: `hot-single-${targetQps}-${index}-${Date.now()}`,
+              userId: benchmarkAccount,
+              nickname: "Benchmark Hot Single",
+              amount,
+            }),
+          });
+          status = 200;
+        } catch (error) {
+          status = error.status ?? 0;
+        } finally {
+          latencies.push(performance.now() - requestStartedAt);
+          statuses.set(status, (statuses.get(status) ?? 0) + 1);
+          inFlight -= 1;
+          resolve();
+        }
+      }, delayMs);
+    });
+    tasks.push(task);
+  }
+
+  await Promise.all(tasks);
+  const elapsedSeconds = (performance.now() - stageStartedAt) / 1000;
+  const accepted = statuses.get(200) ?? 0;
+  return {
+    mode,
+    roomId,
+    offeredQps: targetQps,
+    achievedQps: totalRequests / elapsedSeconds,
+    acceptedRequests: accepted,
+    acceptedQps: accepted / elapsedSeconds,
+    requests: totalRequests,
+    statuses: Object.fromEntries([...statuses.entries()].sort(([a], [b]) => a - b)),
+    avgMs: latencies.reduce((sum, value) => sum + value, 0) / Math.max(1, latencies.length),
+    p50Ms: percentile(latencies, 0.5),
+    p95Ms: percentile(latencies, 0.95),
+    p99Ms: percentile(latencies, 0.99),
+    maxMs: Math.max(...latencies, 0),
+    maxInFlight,
+  };
 }
 
 async function runMultiRoomStage(roomCount) {
@@ -339,10 +461,27 @@ await request("/users/login", {
 });
 
 const results = [];
-for (const stage of stages) {
-  const result = await runStage(stage);
-  results.push(result);
-  console.log(JSON.stringify(result));
-}
+if (mode === "hot-single") {
+  await createBenchmarkUser("hot-single");
+  const roomId = await setupRoom("hot-single");
+  const promotion = await promoteHotRoom(roomId);
+  console.log(JSON.stringify({ mode, promotion }));
+  const warmupSeconds = Number(process.env.BENCHMARK_WARMUP_SECONDS ?? "3");
+  if (warmupSeconds > 0) {
+    await runHotSingleStage(200, roomId, -1, warmupSeconds);
+  }
+  for (let index = 0; index < stages.length; index += 1) {
+    const result = await runHotSingleStage(stages[index], roomId, index);
+    results.push(result);
+    console.log(JSON.stringify(result));
+  }
+  console.log(JSON.stringify({ mode, promotion, summary: results }));
+} else {
+  for (const stage of stages) {
+    const result = await runStage(stage);
+    results.push(result);
+    console.log(JSON.stringify(result));
+  }
 
-console.log(JSON.stringify({ summary: results }));
+  console.log(JSON.stringify({ summary: results }));
+}

@@ -2,6 +2,43 @@
 
 Test date: 2026-10-04
 
+## 结果总览
+
+以下数据必须在同一口径下阅读。单房间 QPS、端到端总 QPS 和 Redis
+原生 QPS 回答的是不同问题，不能直接互相替代。
+
+| 指标 | 实测结果 | 测试条件与说明 |
+|---|---:|---|
+| 最高稳定端到端吞吐 | **413.42 QPS** | 20 个 HOT 房间并发；全部 HTTP 200；P95 65.10 ms，P99 109.80 ms |
+| 单房间单连接热路径 | **42.19 bid/s** | 1 个 HOT 房间、每房间 1 个顺序 worker；这是延迟上限，不是单房间容量上限 |
+| 单房间热路径并发稳定区 | **200 QPS** | 固定金额竞争、绝大多数请求按预期返回 `400`；P95 15.19 ms，P99 21.11 ms |
+| 单房间热路径容量拐点 | **300 QPS** | 可以完成 298.62 QPS，但 P95 已升至 385.73 ms，队列开始增长 |
+| 单房间冷路径有效出价 | **44.45 bid/s** | 1 个房间、1 个账号、顺序递增出价；平均 22.49 ms，P95 27.58 ms |
+| 进入 HOT 阈值 | **25 bid/s** | 单房间 5 秒滑动窗口；按冷路径约 56% 安全利用率确定 |
+| 退出 HOT 阈值 | **6 bid/s** | 持续 60 秒低于阈值后退出 |
+| Redis 原生 PING 上限 | **27,225.70 req/s** | Redis 单容器、100 并发；仅代表 Redis 资源上限 |
+| Redis 原生 SET 上限 | **19,573.30 req/s** | Redis 单容器、100 并发；不包含 Spring、Lua 和完整业务链路 |
+| Redis 原生 GET 上限 | **26,946.91 req/s** | Redis 单容器、100 并发；不包含 HTTP 和业务校验 |
+| 容量拐点 | **40 个 HOT 房间** | 总吞吐降至 366.72 QPS，单房间 9.17 QPS，P95 升至 138.25 ms |
+
+结论：
+
+- 当前单实例部署的最高稳定端到端观测值为 **413.42 QPS**，对应约
+  **20 个 HOT 房间**。
+- `42.19 QPS` 和 `44.45 bid/s` 都是单连接顺序测试，数量接近是正常的；
+  二者衡量的是单次请求延迟，不是并发容量。单 HOT 房间在当前环境中
+  约 `200 QPS` 稳定，`300 QPS` 开始出现明显排队。
+- 40 个 HOT 房间时，总吞吐下降、单房间吞吐明显降低、P99 上升至
+  643.02 ms，说明系统已经越过应用侧容量拐点。
+- `25 bid/s` 是单个房间进入 HOT 的安全切换阈值，不是系统最大 QPS，
+  也不是单实例总吞吐上限。
+- Redis 原生压测约 `27k req/s`，但它只测 Redis 命令处理能力。真实
+  请求还包含 HTTP、Spring、钱包校验、排行榜、事件发布和 Stream
+  持久化，因此端到端结果显著低于该参考值。
+- 冷路径竞争测试中的 `500 offered QPS -> 302.20 achieved QPS` 属于
+  固定金额、大量请求预期返回 `400` 的队列崩塌测试，不能当作有效出价
+  容量，也不能与上述 413.42 QPS 的有效出价结果混用。
+
 ## Environment
 
 - Backend: Spring Boot, Java 21, Windows host
@@ -110,6 +147,49 @@ Interpretation:
 - For this single-node deployment, keep the effective HOT-room count below
   roughly 20 and scale application instances or Redis shards before increasing
   this limit.
+
+## Single HOT Room Concurrency Test
+
+The previous per-room `42.19 QPS` result used exactly one sequential worker
+per room. That measures request latency, not the maximum throughput of one
+HOT room. This test uses an open-loop request rate against one HOT room:
+
+- One HOT room and one funded bidder
+- All requests use the same amount after the first successful bid
+- The first request returns `200`; the following requests are expected to
+  return `400 BID_TOO_LOW`
+- This measures HOT-path request handling under bidding contention, not the
+  successful-bid acceptance rate
+- A 3-second, 200 QPS warmup runs before each measured stage
+
+| Offered QPS | Achieved QPS | P50 ms | P95 ms | P99 ms | Max In Flight | Result |
+|---:|---:|---:|---:|---:|---:|---|
+| 200 | 199.73 | 10.33 | 15.19 | 21.11 | 12 | Stable |
+| 250 | 249.52 | 16.44 | 263.62 | 294.24 | 98 | Tail latency starts to degrade |
+| 300 | 298.62 | 47.37 | 385.73 | 437.88 | 165 | Queue is growing |
+| 350 | 345.77 | 235.67 | 599.14 | 646.12 | 255 | Overloaded |
+| 400 | 325.65 | 2,695.91 | 3,464.35 | 3,542.77 | 1,438 | Queue collapse |
+
+The same test runner and Docker network were also used to run a cold-path
+contention control. Cold-path duplicate-bid rejection remains stable through
+300 QPS in that control, while the HOT path starts degrading between 250 and
+300 QPS. This is expected for this particular workload: a duplicate bid is
+rejected before MySQL mutates the row, so it is already a cheap failure path,
+while the HOT path still pays for the Redis script and cache reads.
+
+The HOT-path advantage in this project is therefore not "one room accepts
+more sequential valid bids". It is:
+
+- Invalid or outbid requests stop contending for the MySQL room row lock.
+- Independent HOT rooms can run concurrently and reached 413.42 valid bids
+  per second in the multi-room test.
+- Financial mutation, leaderboard update, event emission, and persistence are
+  kept off the synchronous MySQL path.
+
+For a single auction room, only one strictly increasing successful bid can win
+per version. The measured single-connection valid-bid rate is therefore around
+42 to 44 bids per second, while the safe concurrent HOT-path handling range in
+this environment is about 200 QPS.
 
 ## Raw Redis Benchmark
 
@@ -252,5 +332,17 @@ Run the contention sweep:
 $env:BENCHMARK_MODE = "contention"
 $env:BENCHMARK_DURATION_SECONDS = "15"
 $env:BENCHMARK_STAGES = "10,20,30,50,80,100,150,200,300"
+node D:\auction\jmeter\bid-qps-benchmark.mjs
+```
+
+Run the single HOT room concurrency sweep:
+
+```powershell
+$env:BENCHMARK_MODE = "hot-single"
+$env:BENCHMARK_DURATION_SECONDS = "10"
+$env:BENCHMARK_PREHEAT_QPS = "100"
+$env:BENCHMARK_PREHEAT_SECONDS = "8"
+$env:BENCHMARK_WARMUP_SECONDS = "3"
+$env:BENCHMARK_STAGES = "200,250,300,350,400"
 node D:\auction\jmeter\bid-qps-benchmark.mjs
 ```
