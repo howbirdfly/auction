@@ -52,7 +52,7 @@ class AuctionServiceLobbyBroadcastTest {
                 BigDecimal.TEN
         );
         AuctionRoomSnapshot snapshot = org.mockito.Mockito.mock(AuctionRoomSnapshot.class);
-        when(bidEngineRouter.placeBid("AR-1", request)).thenReturn(snapshot);
+        when(bidEngineRouter.placeBid("AR-1", request, null)).thenReturn(snapshot);
         auctionService.placeBid("AR-1", request);
         auctionService.placeBid("AR-1", request);
 

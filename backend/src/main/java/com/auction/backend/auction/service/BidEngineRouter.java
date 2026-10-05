@@ -24,7 +24,12 @@ public class BidEngineRouter implements BidEngine {
 
     @Override
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
-        HotRoomStatus status = hotRoomManager.status(roomId);
+        return placeBid(roomId, request, hotRoomManager.status(roomId));
+    }
+
+    public AuctionRoomSnapshot placeBid(String roomId,
+                                        BidRequest request,
+                                        HotRoomStatus status) {
         if (status == null || status == HotRoomStatus.REDIS_UNAVAILABLE) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,

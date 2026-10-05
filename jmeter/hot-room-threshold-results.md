@@ -6,7 +6,7 @@ Test date: 2026-10-04
 
 - Backend: Spring Boot, Java 21, Windows host
 - Database: MySQL benchmark database `auction_bench`
-- Hot-path Redis: local Docker Sentinel topology, one master and two replicas
+- Hot-path Redis: backend, MySQL, and Redis run in the same Docker network
 - Load generator: Node.js HTTP benchmark, no JMeter dependency
 - Rate limit: disabled only in the benchmark process environment
 
@@ -60,15 +60,71 @@ row locking.
 The clear knee is between 200 and 300 offered QPS. The 500 QPS stage collapses
 into queue buildup and is not a useful operating point.
 
-## Local Hot-Path Result
+## Threshold Transition Test
 
-The local Windows-to-Docker Redis path measured only 14.6 to 17.7 valid bid/s
-after initial optimization. The main cause is Docker Desktop network overhead
-and multiple Redis round trips per bid, not Redis Lua execution itself.
+The final threshold test ran the backend, MySQL, and Redis in the same Docker
+network. This removes Windows host-to-container port NAT from the application
+request path.
 
-This result is recorded for completeness but is not used to choose the
-threshold. Production benchmarking must run the application and Redis on the
-same LAN or in the same cluster network.
+All requests in this test were valid bids. Each stage used a new room and a new
+funded bidder.
+
+| Target QPS | Achieved QPS | Promoted | Promotion Time | Pre-HOT P95 | Post-HOT P95 |
+|---:|---:|---|---:|---:|---:|
+| 20 | 20.01 | No | - | 61.78 ms | - |
+| 25 | 25.04 | Yes | 5.69 s | 42.18 ms | 25.16 ms |
+| 30 | 30.01 | Yes | 4.22 s | 41.56 ms | 20.65 ms |
+| 40 | 39.99 | Yes | 3.81 s | 34.68 ms | 19.42 ms |
+
+This verifies the intended behavior:
+
+- 20 bid/s remains on MySQL and does not enter HOT.
+- 25 bid/s enters HOT after the rolling five-second window reaches the
+  threshold.
+- Once HOT, P95 improves because requests no longer contend for the MySQL room
+  row lock.
+- 30 and 40 bid/s reach the rolling threshold earlier and continue to show
+  lower post-promotion latency.
+
+## End-To-End Hot Capacity
+
+This test runs multiple independent HOT rooms at the same time. Each room has
+one worker that sends valid bids sequentially. The backend, MySQL, and Redis
+run in the same Docker network.
+
+| HOT Rooms | Total QPS | QPS Per Room | P50 ms | P95 ms | P99 ms | HTTP 200 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 42.19 | 42.19 | 21.59 | 34.05 | 57.62 | 633 |
+| 5 | 211.97 | 42.39 | 21.75 | 34.70 | 46.18 | 3,183 |
+| 10 | 331.51 | 33.15 | 28.11 | 41.51 | 53.89 | 4,978 |
+| 20 | 413.42 | 20.67 | 43.86 | 65.10 | 109.80 | 6,212 |
+| 40 | 366.72 | 9.17 | 95.76 | 138.25 | 643.02 | 5,514 |
+
+Interpretation:
+
+- One room can process about 42 valid bids per second in this environment.
+- The application remains stable through 20 concurrent HOT rooms and about
+  413 total QPS.
+- At 40 HOT rooms, total QPS decreases, per-room QPS falls sharply, and P99
+  rises to 643 ms. This is the application-side knee.
+- For this single-node deployment, keep the effective HOT-room count below
+  roughly 20 and scale application instances or Redis shards before increasing
+  this limit.
+
+## Raw Redis Benchmark
+
+Measured inside the Redis master container with `redis-benchmark` and 100
+concurrent clients:
+
+| Command | Requests Per Second | P50 |
+|---|---:|---:|
+| PING_INLINE | 27,225.70 | 1.80 ms |
+| SET | 19,573.30 | 2.80 ms |
+| GET | 26,946.91 | 1.82 ms |
+
+This is a Redis-only upper-bound reference. The application and full Lua flow
+are still far below these numbers because HTTP, Spring, wallet validation,
+leaderboard updates, event publishing, and Stream persistence add work.
 
 ## Threshold Selection
 

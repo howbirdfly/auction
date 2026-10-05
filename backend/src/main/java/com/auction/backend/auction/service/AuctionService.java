@@ -135,9 +135,9 @@ public class AuctionService {
     }
 
     public AuctionRoomSnapshot placeBid(String roomId, BidRequest request) {
-        AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request);
-        boolean thresholdReached = hotRoomManager.recordBid(roomId);
         HotRoomStatus status = hotRoomManager.status(roomId);
+        AuctionRoomSnapshot snapshot = bidEngineRouter.placeBid(roomId, request, status);
+        boolean thresholdReached = hotRoomManager.recordBid(roomId);
         boolean shouldPromote = status == HotRoomStatus.COLD && thresholdReached;
         if (shouldPromote) {
             hotRoomManager.markHot(snapshot, auctionRoomReadService.loadLeaderboard(roomId));
@@ -190,7 +190,6 @@ public class AuctionService {
     }
 
     @Scheduled(fixedDelay = 15000)
-    @Transactional(readOnly = true)
     public void warmHotRoomCache() {
         List<AuctionRoom> rooms = auctionRoomMapper.findAllOrderByEndsAtAsc().stream()
                 .filter(room -> room.getStatus() == AuctionStatus.BIDDING)

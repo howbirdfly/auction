@@ -1,0 +1,21 @@
+spring:
+  data:
+    redis:
+      host: auction-redis-master
+      port: 6379
+      database: 2
+      password: auction123
+      timeout: 3s
+
+auction:
+  bid-rate-limit:
+    enabled: false
+  cache:
+    redis:
+      enabled: true
+      hot-access-threshold: 1000
+      hot-bid-enter-threshold: 25
+      hot-bid-exit-threshold: 6
+  persistence:
+    rabbitmq:
+      enabled: false

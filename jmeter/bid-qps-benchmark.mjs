@@ -80,10 +80,149 @@ function percentile(values, ratio) {
 }
 
 async function runStage(stageQps) {
+  if (mode === "multi") {
+    return runMultiRoomStage(stageQps);
+  }
   if (mode === "valid") {
     return runValidStage(stageQps);
   }
+  if (mode === "threshold") {
+    return runThresholdStage(stageQps);
+  }
   return runContentionStage(stageQps);
+}
+
+async function runMultiRoomStage(roomCount) {
+  await createBenchmarkUser(roomCount);
+  const roomIds = [];
+  for (let index = 0; index < roomCount; index += 1) {
+    roomIds.push(await setupRoom(`${roomCount}-${index}`));
+  }
+
+  const latencies = [];
+  const statuses = new Map();
+  let hotResponses = 0;
+  const stageStartedAt = performance.now();
+
+  const workers = roomIds.map(async (roomId) => {
+    let amount = 2;
+    while ((performance.now() - stageStartedAt) / 1000 < durationSeconds) {
+      const requestStartedAt = performance.now();
+      let status = 0;
+      try {
+        const response = await request(`/auctions/${roomId}/bids`, {
+          method: "POST",
+          body: JSON.stringify({
+            requestId: `multi-${roomCount}-${roomId}-${amount}-${Date.now()}`,
+            userId: benchmarkAccount,
+            nickname: `Benchmark ${roomCount}`,
+            amount,
+          }),
+        });
+        status = 200;
+        if (response?.hot === true) {
+          hotResponses += 1;
+        }
+        amount += 1;
+      } catch (error) {
+        status = error.status ?? 0;
+      } finally {
+        latencies.push(performance.now() - requestStartedAt);
+        statuses.set(status, (statuses.get(status) ?? 0) + 1);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  const elapsedSeconds = (performance.now() - stageStartedAt) / 1000;
+  return {
+    mode,
+    rooms: roomCount,
+    achievedQps: latencies.length / elapsedSeconds,
+    perRoomQps: latencies.length / elapsedSeconds / roomCount,
+    requests: latencies.length,
+    hotResponses,
+    statuses: Object.fromEntries([...statuses.entries()].sort(([a], [b]) => a - b)),
+    avgMs: latencies.reduce((sum, value) => sum + value, 0) / Math.max(1, latencies.length),
+    p50Ms: percentile(latencies, 0.5),
+    p95Ms: percentile(latencies, 0.95),
+    p99Ms: percentile(latencies, 0.99),
+    maxMs: Math.max(...latencies, 0),
+    maxInFlight: roomCount,
+  };
+}
+
+async function runThresholdStage(targetQps) {
+  await createBenchmarkUser(targetQps);
+  const roomId = await setupRoom(targetQps);
+  const intervalMs = 1000 / targetQps;
+  const latencies = [];
+  const prePromotionLatencies = [];
+  const postPromotionLatencies = [];
+  const statuses = new Map();
+  let amount = 2;
+  let nextRequestAt = performance.now();
+  let promotionAtMs = null;
+  const stageStartedAt = performance.now();
+
+  while ((performance.now() - stageStartedAt) / 1000 < durationSeconds) {
+    const now = performance.now();
+    if (nextRequestAt > now) {
+      await new Promise((resolve) => setTimeout(resolve, nextRequestAt - now));
+    }
+
+    const requestStartedAt = performance.now();
+    let status = 0;
+    let response = null;
+    try {
+      response = await request(`/auctions/${roomId}/bids`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestId: `threshold-${targetQps}-${amount}-${Date.now()}`,
+          userId: benchmarkAccount,
+          nickname: `Benchmark ${targetQps}`,
+          amount,
+        }),
+      });
+      status = 200;
+      amount += 1;
+    } catch (error) {
+      status = error.status ?? 0;
+    } finally {
+      const latency = performance.now() - requestStartedAt;
+      latencies.push(latency);
+      statuses.set(status, (statuses.get(status) ?? 0) + 1);
+      if (promotionAtMs == null) {
+        prePromotionLatencies.push(latency);
+      } else {
+        postPromotionLatencies.push(latency);
+      }
+      if (promotionAtMs == null && response?.hot === true) {
+        promotionAtMs = performance.now() - stageStartedAt;
+      }
+      const elapsedAfterRequest = performance.now() - stageStartedAt;
+      nextRequestAt = Math.max(
+        elapsedAfterRequest + intervalMs,
+        nextRequestAt + intervalMs
+      );
+    }
+  }
+
+  return {
+    mode,
+    targetQps,
+    offeredQps: targetQps,
+    achievedQps: latencies.length / ((performance.now() - stageStartedAt) / 1000),
+    requests: latencies.length,
+    promoted: promotionAtMs != null,
+    promotionMs: promotionAtMs,
+    statuses: Object.fromEntries([...statuses.entries()].sort(([a], [b]) => a - b)),
+    avgMs: latencies.reduce((sum, value) => sum + value, 0) / Math.max(1, latencies.length),
+    p95Ms: percentile(latencies, 0.95),
+    p99Ms: percentile(latencies, 0.99),
+    prePromotionP95Ms: percentile(prePromotionLatencies, 0.95),
+    postPromotionP95Ms: percentile(postPromotionLatencies, 0.95),
+  };
 }
 
 async function runValidStage(stageQps) {
